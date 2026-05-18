@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Gerador de provaineitor</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%233ddc84'/%3E%3Ctext x='16' y='22' text-anchor='middle' font-size='16' fill='%23020'%3EP%3C/text%3E%3C/svg%3E">
   <link href="vendor/bootstrap.min.css" rel="stylesheet">
   <link href="styles/bootstrap-theme-overrides.css" rel="stylesheet">
   <link href="styles/editor.css" rel="stylesheet">
@@ -263,12 +264,12 @@
     <div class="modal-dialog modal-dialog-centered">
       <div class="modal-content">
         <div class="modal-header">
-          <h2 class="modal-title h5" id="modalApiOfflineLabel">Servidor em inicialização</h2>
+          <h2 class="modal-title h5" id="modalApiOfflineLabel">Servidor de geração indisponível</h2>
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
         </div>
         <div class="modal-body small text-pr-muted">
-          <p class="mb-2">A geração de provas em PDF roda no <strong>OnRender</strong>, em plano gratuito — não é um servidor dedicado sempre ligado.</p>
-          <p class="mb-0">Após um período sem uso, o serviço &quot;dorme&quot; e pode levar alguns minutos para voltar. O ícone de ligação fica cinza enquanto isso; quando ficar verde, você já pode gerar as provas.</p>
+          <p class="mb-2">A geração de provas em PDF roda no <strong>OnRender</strong> (<a href="https://gerador-de-prova-backend.onrender.com/health" target="_blank" rel="noopener noreferrer">testar /health</a>). Em plano gratuito o serviço pode &quot;dormir&quot; alguns minutos após ficar ocioso.</p>
+          <p id="modalApiOfflineHint" class="mb-0"></p>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Entendi</button>

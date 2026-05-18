@@ -841,7 +841,7 @@
     }
   }
 
-  function setApiUiOnline(online) {
+  function setApiUiOnline(online, detail) {
     apiOnline = !!online;
     const btn = document.getElementById("apiStatusBtn");
     if (btn) {
@@ -850,7 +850,13 @@
       btn.classList.toggle("api-status-offline", !apiOnline);
       btn.title = apiOnline
         ? "Servidor de geração online"
-        : "Servidor indisponível — o sistema pode estar iniciando. Clique para mais informações.";
+        : "Servidor indisponível — clique para ver causas (bloqueador, CORS ou cold start).";
+    }
+    const hintEl = document.getElementById("modalApiOfflineHint");
+    if (hintEl && detail && detail.hint && !apiOnline) {
+      hintEl.textContent = detail.hint;
+    } else if (hintEl && apiOnline) {
+      hintEl.textContent = "";
     }
     updateGerarProvasButton();
   }
@@ -3667,6 +3673,6 @@
   if (globalThis.editorBackendApi) {
     globalThis.editorBackendApi.onStatusChange(setApiUiOnline);
   } else {
-    setApiUiOnline(false);
+    setApiUiOnline(false, { issue: "network", hint: null });
   }
 })();

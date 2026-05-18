@@ -12,6 +12,7 @@
 
   let online = false;
   let healthTimer = null;
+  let healthDetail = { issue: null, hint: null };
   const statusListeners = [];
 
   function getApiKey() {
@@ -34,11 +35,10 @@
   }
 
   function notifyStatus(next) {
-    if (next === online) return;
     online = next;
     statusListeners.forEach((fn) => {
       try {
-        fn(online);
+        fn(online, { ...healthDetail });
       } catch (_) {}
     });
   }
@@ -61,20 +61,36 @@
   }
 
   async function checkHealth() {
+    healthDetail = { issue: null, hint: null };
     try {
       const res = await fetch(`${getBaseUrl()}/health`, {
         method: "GET",
         cache: "no-store",
       });
       if (!res.ok) {
+        healthDetail = {
+          issue: "server",
+          hint: "O servidor respondeu com erro. Pode estar iniciando no OnRender.",
+        };
         notifyStatus(false);
         return false;
       }
       const data = await res.json();
       const isOnline = data && data.status === "ok";
+      if (isOnline) {
+        healthDetail = { issue: null, hint: null };
+      } else {
+        healthDetail = { issue: "server", hint: "Resposta inesperada do servidor." };
+      }
       notifyStatus(isOnline);
       return isOnline;
-    } catch (_) {
+    } catch (err) {
+      const msg = err && err.message ? String(err.message) : "";
+      healthDetail = {
+        issue: "network",
+        hint:
+          "Nao foi possivel contactar a API a partir desta pagina. Causas comuns: extensao bloqueando (uBlock, AdBlock, Brave Shields) — veja ERR_BLOCKED_BY_CLIENT no console; ou CORS nao configurado no Render (variavel CORS_ORIGIN=https://oicanji.github.io). Abra o link de teste abaixo num separador: se mostrar {\"status\":\"ok\"} mas o icone continua cinza, e bloqueador ou CORS.",
+      };
       notifyStatus(false);
       return false;
     }
@@ -90,9 +106,13 @@
     if (typeof fn === "function") {
       statusListeners.push(fn);
       try {
-        fn(online);
+        fn(online, { ...healthDetail });
       } catch (_) {}
     }
+  }
+
+  function getHealthDetail() {
+    return { ...healthDetail };
   }
 
   async function createJob(prBlob, filename, quantidade) {
@@ -210,6 +230,7 @@
   globalThis.editorBackendApi = {
     getBaseUrl,
     isOnline: () => online,
+    getHealthDetail,
     checkHealth,
     onStatusChange,
     startGeneration,
