@@ -2467,24 +2467,27 @@
     return chunks.join("\n\n") + "\n";
   }
 
-  function getPageScrollElement() {
-    return document.scrollingElement || document.documentElement;
+  function getMainScrollTop() {
+    return window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
+  }
+
+  function getMainScrollMax() {
+    const docHeight = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+    return Math.max(0, docHeight - window.innerHeight);
   }
 
   function scrollMainTo(top, behavior) {
-    const root = getPageScrollElement();
-    const maxTop = Math.max(0, root.scrollHeight - root.clientHeight);
-    root.scrollTo({ top: Math.max(0, Math.min(maxTop, top)), left: 0, behavior: behavior || "auto" });
+    const y = Math.max(0, Math.min(getMainScrollMax(), top));
+    window.scrollTo({ top: y, left: 0, behavior: behavior || "auto" });
   }
 
   function scrollElementIntoMainView(target, offsetPx) {
     if (!target) {
       return;
     }
-    const root = getPageScrollElement();
     const offset = offsetPx == null ? 12 : offsetPx;
     const rect = target.getBoundingClientRect();
-    const top = rect.top + root.scrollTop - offset;
+    const top = rect.top + getMainScrollTop() - offset;
     const behavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
     scrollMainTo(top, behavior);
   }
@@ -3055,12 +3058,8 @@
   });
 
   function fabScrollPage(direction) {
-    const root = getPageScrollElement();
-    const step = root.clientHeight || window.innerHeight;
-    const maxTop = Math.max(0, root.scrollHeight - root.clientHeight);
-    const next = Math.max(0, Math.min(maxTop, root.scrollTop + direction * step));
     const behavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
-    root.scrollTo({ top: next, left: 0, behavior });
+    scrollMainTo(direction < 0 ? 0 : getMainScrollMax(), behavior);
   }
 
   document.getElementById("fabPageUp")?.addEventListener("click", () => fabScrollPage(-1));
