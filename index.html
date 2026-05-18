@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-bs-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Gerador de provaineitor</title>
+  <link href="vendor/bootstrap.min.css" rel="stylesheet">
+  <link href="styles/bootstrap-theme-overrides.css" rel="stylesheet">
+  <link href="styles/editor.css" rel="stylesheet">
+</head>
+<body>
+  <div class="container py-4" style="max-width: 920px;">
+    <header class="mb-4 d-flex justify-content-between align-items-center gap-3">
+      <h1 class="h3 mb-0">Gerador de prova(ineitor)</h1>
+      <div class="header-status-group d-flex align-items-center gap-2 flex-shrink-0">
+        <button type="button" id="apiStatusBtn" class="api-status-btn api-status-offline" title="Servidor de geração indisponível — o sistema pode estar iniciando" aria-label="Status do servidor de geração">
+          <img src="assets/icon/link.svg" alt="" width="28" height="28" class="api-status-icon-img">
+        </button>
+        <div id="aiStatusWrap" class="d-none" title="Assistente IA (chat-gpb) disponível">
+        <span id="aiStatusIcon" class="ai-status-icon ai-status-online" role="img" aria-label="IA disponível">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" width="28" height="28" aria-hidden="true"><path d="M360-360v-240h240v240H360Zm80-80h80v-80h-80v80Zm-80 320v-80h-80q-33 0-56.5-23.5T200-280v-80h-80v-80h80v-80h-80v-80h80v-80q0-33 23.5-56.5T280-760h80v-80h80v80h80v-80h80v80h80q33 0 56.5 23.5T760-680v80h80v80h-80v80h80v80h-80v80q0 33-23.5 56.5T680-200h-80v80h-80v-80h-80v80h-80Zm320-160v-400H280v400h400ZM480-480Z"/></svg>
+        </span>
+        </div>
+      </div>
+    </header>
+
+    <div id="importPrCard" class="card mb-4">
+      <div class="card-header">Importar pacote PR (.pr)</div>
+      <div class="card-body">
+        <p class="small text-pr-muted mb-3 mb-md-2">O ficheiro <code class="text-light">.pr</code> é um ZIP com <code class="text-light">principal.md</code> (texto no formato do gerador: blocos com <code class="text-light">pergunta:</code>, opcionalmente <code class="text-light"># meta</code>), todo arquivo gerado aqui com extensão .pr é feito exclusivamente para o uso dessa ferramenta.</p>
+        <div class="row g-3 align-items-end">
+          <div class="col-12 col-md-6">
+            <label class="form-label" for="importPrFile">Arquivo .pr</label>
+            <input type="file" class="form-control form-control-sm" id="importPrFile" accept=".pr,application/zip,application/x-zip-compressed">
+          </div>
+          <div class="col-12 col-md-6">
+            <div class="form-check mt-md-4">
+              <input class="form-check-input" type="checkbox" id="importFillMeta" checked>
+              <label class="form-check-label" for="importFillMeta">Atualizar metadados com o bloco <span class="text-pr-muted"># meta</span> (quando existir)</label>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="importPrLoadedCard" class="card card-pr-loaded mb-4 d-none">
+      <div class="card-body py-3 px-4 d-flex align-items-center justify-content-between gap-2">
+        <span id="importPrLoadedName" class="import-pr-loaded-name h2 mb-0"></span>
+        <button type="button" class="btn btn-sm btn-outline-secondary import-pr-clear-btn border-0" id="importPrClear" aria-label="Fechar pacote carregado">&times;</button>
+      </div>
+    </div>
+
+    <div class="card card-fontes-discreto mb-4">
+      <div class="card-body py-2 px-3">
+        <div class="fontes-upload-row small text-pr-muted">
+          <label for="addFontesFile" class="fontes-upload-label mb-0">Adicionar fonte:</label>
+          <input type="file" class="form-control form-control-sm fontes-file-input" id="addFontesFile" accept=".txt,.md,text/plain,text/markdown" multiple>
+        </div>
+      </div>
+    </div>
+
+    <ul class="nav nav-tabs mb-3" id="mainTabs" role="tablist">
+      <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="tab-gerar" data-bs-toggle="tab" data-bs-target="#pane-gerar" type="button" role="tab" aria-controls="pane-gerar" aria-selected="true">Prova <span id="provaTabBadge" class="badge badge-ifsc ms-1">0</span></button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="tab-corrigir" data-bs-toggle="tab" data-bs-target="#pane-corrigir" type="button" role="tab" aria-controls="pane-corrigir" aria-selected="false">Corrigir <span id="corrigirTabBadge" class="badge bg-secondary ms-1 d-none">0</span></button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="tab-fontes" data-bs-toggle="tab" data-bs-target="#pane-fontes" type="button" role="tab" aria-controls="pane-fontes" aria-selected="false">Fontes <span id="fontesTabBadge" class="badge bg-secondary ms-1">0</span></button>
+      </li>
+    </ul>
+
+    <div class="tab-content">
+      <div class="tab-pane fade show active" id="pane-gerar" role="tabpanel" aria-labelledby="tab-gerar" tabindex="0">
+        <div id="validationAlert" class="alert alert-danger d-none" role="alert"></div>
+
+        <div class="card mb-4">
+          <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <span>Metadados</span>
+            <div class="form-check form-switch mb-0">
+              <input class="form-check-input" type="checkbox" id="includeMeta" checked>
+              <label class="form-check-label" for="includeMeta">Incluir no arquivo</label>
+            </div>
+          </div>
+          <div class="card-body collapse show" id="metaCollapse">
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label" for="meta_nome_professor">Nome do professor</label>
+                <input type="text" class="form-control" id="meta_nome_professor" data-meta-key="nome_professor" autocomplete="off" spellcheck="true" lang="pt-BR">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label" for="meta_nome_curso">Nome do curso</label>
+                <input type="text" class="form-control" id="meta_nome_curso" data-meta-key="nome_curso" autocomplete="off" spellcheck="true" lang="pt-BR">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label" for="meta_nome_disciplina">Nome da disciplina</label>
+                <input type="text" class="form-control" id="meta_nome_disciplina" data-meta-key="nome_disciplina" autocomplete="off" spellcheck="true" lang="pt-BR">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label" for="meta_semestre">Semestre</label>
+                <input type="text" class="form-control" id="meta_semestre" data-meta-key="semestre" autocomplete="off" spellcheck="true" lang="pt-BR">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label" for="meta_data_da_prova">Data da prova</label>
+                <input type="text" class="form-control" id="meta_data_da_prova" data-meta-key="data_da_prova" autocomplete="off" spellcheck="true" lang="pt-BR">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label" for="meta_tipo_avaliacao">Tipo de avaliação</label>
+                <input type="text" class="form-control" id="meta_tipo_avaliacao" data-meta-key="tipo_avaliacao" autocomplete="off" spellcheck="true" lang="pt-BR">
+              </div>
+              <div class="col-12">
+                <label class="form-label" for="meta_orientacoes">Orientações</label>
+                <input type="text" class="form-control" id="meta_orientacoes" data-meta-key="orientacoes" autocomplete="off" spellcheck="true" lang="pt-BR">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="questionsRoot"></div>
+
+        <div class="d-flex flex-wrap gap-2 align-items-center mt-4 pt-3 border-top border-secondary">
+          <button type="button" class="btn btn-light" id="btnAddQuestion">Adicionar questão</button>
+          <button type="button" class="btn btn-outline-light d-none" id="btnGerarQuestao">Gerar questão</button>
+          <div class="ms-md-auto d-flex flex-wrap gap-2 align-items-center">
+            <label class="form-label mb-0 small text-pr-muted" for="outFilename">Arquivo</label>
+            <input type="text" class="form-control form-control-sm" id="outFilename" value="fonte.pr" style="width: 180px;" placeholder="Nome do arquivo .pr">
+            <button type="button" class="btn btn-secondary" id="btnGerarProvas" disabled>
+              <span class="spinner-border spinner-border-sm d-none" id="btnGerarProvasSpinnerOffline" role="status" aria-hidden="true"></span>
+              Gerar
+            </button>
+            <button type="button" class="btn btn-outline-light d-none" id="btnVerPdf">Ver PDF</button>
+            <button type="button" class="btn btn-primary" id="btnDownload">Exportar</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-pane fade" id="pane-corrigir" role="tabpanel" aria-labelledby="tab-corrigir" tabindex="0">
+        <p class="small text-pr-muted mb-2">Use o <strong>somente</strong> pacote <code class="text-light">.pr</code> importado no topo.</p>
+        <p class="small text-pr-muted mb-2">Cada geração grava só o último lote no <code class="text-light">.pr</code>. Execuções antigas ficam em pastas <code class="text-light">output/runs/…</code> (lista em <code class="text-light">output/runs-index.json</code>); na linha de comando use <code class="text-light">--ordens runs/nome-da-pasta</code> no restaurar se não for a última.</p>
+        <p class="small text-pr-muted mb-3">As questões e ids <code class="text-light">Q1</code>, <code class="text-light">Q2</code>, … têm de coincidir com o <code class="text-light">principal.md</code> da geração.</p>
+        <button type="button" class="btn btn-primary mb-3" id="btnCorrigirGabarito">Atualizar todos os gabaritos</button>
+        <div id="corrigirAlert" class="alert alert-danger d-none" role="alert"></div>
+        <div id="corrigirResult" class="d-none"></div>
+      </div>
+
+      <div class="tab-pane fade" id="pane-fontes" role="tabpanel" aria-labelledby="tab-fontes" tabindex="0">
+        <h2 class="h6 mb-2">Fontes de apoio</h2>
+        <p class="small text-pr-muted mb-3"><span id="fontesListTotal">0</span> arquivo(s). Use <strong>Adicionar fonte:</strong> no topo do editor (apenas .txt e .md, até 20 MB cada).</p>
+        <div id="fontesListEmpty" class="small text-pr-muted mb-3">Nenhuma fonte. Use Adicionar fonte: no topo.</div>
+        <ul id="fontesList" class="list-unstyled mb-0"></ul>
+      </div>
+
+      <div class="mt-4 text-center text-secondary text-small">
+        <em>
+          By Ignacio Sepúlveda "Oicanji" / Feito para criação de provas para o IFSC - Câmpus Garopaba.
+        </em>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="fotoEnunciadoModal" tabindex="-1" aria-labelledby="fotoEnunciadoModalTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+      <div class="modal-content border-secondary" style="background-color: var(--pr-surface, #0d0d0d); color: var(--pr-text, #f0f0f0);">
+        <div class="modal-header border-secondary">
+          <h5 class="modal-title h6" id="fotoEnunciadoModalTitle">Imagem do enunciado</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fechar"></button>
+        </div>
+        <div class="modal-body text-center">
+          <img id="fotoEnunciadoModalImg" class="img-fluid rounded d-none" alt="Pré-visualização da imagem anexada ao enunciado" style="max-height: 60vh;">
+          <p id="fotoEnunciadoModalSemPreview" class="small text-pr-muted mb-0 d-none">Pré-visualização indisponível para este anexo.</p>
+        </div>
+        <div class="modal-footer border-secondary">
+          <button type="button" class="btn btn-outline-light" id="fotoEnunciadoModalSubstituir">Substituir</button>
+          <button type="button" class="btn btn-danger" id="fotoEnunciadoModalExcluir">Excluir</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="gerarQuestaoModal" tabindex="-1" aria-labelledby="gerarQuestaoModalTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+      <div class="modal-content border-secondary gerar-questao-modal-content">
+        <div class="modal-header border-secondary">
+          <h5 class="modal-title h6" id="gerarQuestaoModalTitle">Gerar questão</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fechar"></button>
+        </div>
+        <div class="modal-body">
+          <div id="gerarQuestaoAlert" class="alert alert-danger small d-none" role="alert"></div>
+          <label class="form-label" for="gerarQuestaoTema">Você quer gerar uma pergunta sobre que?</label>
+          <textarea class="form-control mb-2" id="gerarQuestaoTema" rows="3" placeholder="Se deixar vazio, será criado baseando nas perguntas já existentes"></textarea>
+          <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+            <button type="button" class="btn btn-sm btn-outline-light" id="gerarQuestaoAnexarBtn">Anexar</button>
+            <input type="file" class="d-none" id="gerarQuestaoAnexarFile" accept=".txt,.md,text/plain,text/markdown" multiple>
+            <span class="small text-pr-muted">.txt ou .md (até 20 MB cada)</span>
+          </div>
+          <div id="gerarQuestaoAnexosList" class="modal-anexos-list d-none mb-3"></div>
+          <div class="gerar-questao-divider mb-3" role="presentation"><span>OU</span></div>
+          <p class="small text-pr-muted mb-2">Selecione fontes de apoio (opcional):</p>
+          <div id="gerarQuestaoFontesEmpty" class="small text-pr-muted mb-2 d-none">Nenhuma fonte disponível. Adicione em Adicionar fonte: no topo.</div>
+          <div id="gerarQuestaoFontesList" class="gerar-questao-fontes-list"></div>
+        </div>
+        <div class="modal-footer border-secondary gerar-questao-modal-footer d-flex flex-wrap gap-2 align-items-center justify-content-between">
+          <div class="d-flex flex-wrap gap-2 align-items-center">
+            <button type="button" class="btn btn-primary" id="gerarQuestaoConfirm">Gerar</button>
+            <select class="form-select form-select-sm" id="gerarQuestaoTipo" style="width: auto; min-width: 10rem;">
+              <option value="multipla-escolha">Múltipla escolha</option>
+              <option value="discursiva">Discursiva</option>
+              <option value="verdadeiro_falso">V/F</option>
+              <option value="relacionar">Relacionar</option>
+            </select>
+            <input type="number" class="form-control form-control-sm" id="gerarQuestaoQuantidade" min="1" max="5" value="1" style="width: 4.5rem;" aria-label="Quantidade de questões">
+          </div>
+          <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">Voltar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="gerarProvaModal" tabindex="-1" aria-labelledby="gerarProvaModalTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+      <div class="modal-content border-secondary gerar-questao-modal-content">
+        <div class="modal-header border-secondary">
+          <h5 class="modal-title h6" id="gerarProvaModalTitle">Gerar prova</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fechar"></button>
+        </div>
+        <div class="modal-body">
+          <div id="gerarProvaAlert" class="alert alert-danger small d-none" role="alert"></div>
+          <label class="form-label" for="gerarProvaTema">Sobre o que é a prova?</label>
+          <textarea class="form-control mb-2" id="gerarProvaTema" rows="3" placeholder="Descreva o tema ou conteúdo da avaliação"></textarea>
+          <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+            <button type="button" class="btn btn-sm btn-outline-light" id="gerarProvaAnexarBtn">Anexar</button>
+            <input type="file" class="d-none" id="gerarProvaAnexarFile" accept=".txt,.md,text/plain,text/markdown" multiple>
+            <span class="small text-pr-muted">.txt ou .md (até 20 MB cada)</span>
+          </div>
+          <div id="gerarProvaAnexosList" class="modal-anexos-list d-none mb-3"></div>
+          <div class="gerar-questao-divider mb-3" role="presentation"><span>OU</span></div>
+          <p class="small text-pr-muted mb-2">Selecione fontes de apoio (opcional):</p>
+          <div id="gerarProvaFontesEmpty" class="small text-pr-muted mb-2 d-none">Nenhuma fonte. Use Anexar ou Adicionar fonte no topo.</div>
+          <div id="gerarProvaFontesList" class="gerar-questao-fontes-list"></div>
+        </div>
+        <div class="modal-footer border-secondary gerar-questao-modal-footer d-flex flex-wrap gap-2 align-items-center justify-content-between">
+          <div class="d-flex flex-wrap gap-2 align-items-center">
+            <button type="button" class="btn btn-primary" id="gerarProvaConfirm">Gerar</button>
+            <select class="form-select form-select-sm" id="gerarProvaTipo" style="width: auto; min-width: 10rem;">
+              <option value="multipla-escolha">Múltipla escolha</option>
+              <option value="discursiva">Discursiva</option>
+              <option value="verdadeiro_falso">V/F</option>
+              <option value="relacionar">Relacionar</option>
+            </select>
+            <input type="number" class="form-control form-control-sm" id="gerarProvaQuantidade" min="1" max="15" value="5" style="width: 4.5rem;" aria-label="Quantidade de questões">
+          </div>
+          <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">Voltar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="modalApiOffline" tabindex="-1" aria-labelledby="modalApiOfflineLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 class="modal-title h5" id="modalApiOfflineLabel">Servidor em inicialização</h2>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+        </div>
+        <div class="modal-body small text-pr-muted">
+          <p class="mb-2">A geração de provas em PDF roda no <strong>OnRender</strong>, em plano gratuito — não é um servidor dedicado sempre ligado.</p>
+          <p class="mb-0">Após um período sem uso, o serviço &quot;dorme&quot; e pode levar alguns minutos para voltar. O ícone de ligação fica vermelho enquanto isso; quando ficar verde, você já pode gerar as provas.</p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Entendi</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="modalGerarProvas" tabindex="-1" aria-labelledby="modalGerarProvasLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 class="modal-title h5" id="modalGerarProvasLabel">Gerar provas no servidor</h2>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+        </div>
+        <div class="modal-body">
+          <p class="small text-pr-muted">O pacote atual será enviado ao servidor para compilar o PDF e atualizar o <code class="text-light">.pr</code> com as ordens sorteadas. A operação pode demorar vários minutos.</p>
+          <label class="form-label" for="gerarProvasQuantidade">Quantas versões de prova?</label>
+          <input type="number" class="form-control form-control-sm" id="gerarProvasQuantidade" min="1" max="30" value="1" style="max-width: 8rem;">
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">Cancelar</button>
+          <button type="button" class="btn btn-success" id="gerarProvasConfirm">Gerar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="editorScrollFab" class="editor-scroll-fab" aria-label="Navegação rápida na página">
+    <button type="button" class="editor-fab-btn" id="fabPageUp" title="Página acima" aria-label="Página acima">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M480-555 753-282 706-235 480-461 254-235 207-282 480-555Z"/></svg>
+    </button>
+    <button type="button" class="editor-fab-btn" id="fabPageDown" title="Página abaixo" aria-label="Página abaixo">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M480-345 207-618 254-665 480-439 706-665 753-618 480-345Z"/></svg>
+    </button>
+  </div>
+
+  <script src="vendor/bootstrap.bundle.min.js"></script>
+  <script src="vendor/jszip.min.js"></script>
+  <script src="scripts/exam-plan-browser.js"></script>
+  <script src="scripts/config.js"></script>
+  <script src="scripts/backend-api.js"></script>
+  <script src="scripts/chat-gpb-ai.js"></script>
+  <script src="scripts/app.js"></script>
+
+  <script src="scripts/resposta-botoes.js"></script>
+</body>
+</html>

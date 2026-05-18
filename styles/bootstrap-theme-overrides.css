@@ -1,0 +1,8 @@
+[data-bs-theme="dark"],
+[data-bs-theme="light"],
+:root {
+  --bs-success: #2f9e41;
+  --bs-success-rgb: 47, 158, 65;
+  --bs-danger: #fc033d;
+  --bs-danger-rgb: 252, 3, 61;
+}
