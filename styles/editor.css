@@ -256,22 +256,41 @@ hr {
   filter: brightness(0) invert(0.7);
 }
 
-.ai-status-icon {
+.ai-status-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.15rem;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  border-radius: 6px;
+  color: var(--pr-muted);
+}
+
+.ai-status-btn:hover,
+.ai-status-btn:focus-visible {
+  background: rgba(255, 255, 255, 0.06);
+  outline: none;
+}
+
+.ai-status-btn.ai-status-loading,
+.ai-status-btn.ai-status-offline {
+  color: #9a9a9a;
+}
+
+.ai-status-btn.ai-status-online {
+  color: #3ddc84;
+}
+
+.ai-status-btn .ai-status-icon {
   display: block;
-}
-.ai-status-icon svg,
-.ai-status-icon svg path {
-  fill: #b1c7bb;
+  pointer-events: none;
 }
 
-.ai-status-icon.ai-status-online svg,
-.ai-status-icon.ai-status-online svg path {
-  fill: #3ddc84;
-}
-
-.ai-status-icon.ai-status-offline svg,
-.ai-status-icon.ai-status-offline svg path {
-  fill: #b1c7bb;
+.ai-status-btn .ai-status-icon svg,
+.ai-status-btn .ai-status-icon svg path {
+  fill: currentColor;
 }
 
 .api-status-btn {

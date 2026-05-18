@@ -19,11 +19,11 @@
             <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
           </svg>
         </button>
-        <div id="aiStatusWrap" class="d-none" title="Assistente IA (chat-gpb) disponível">
-        <span id="aiStatusIcon" class="ai-status-icon ai-status-online" role="img" aria-label="IA disponível">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" width="28" height="28" aria-hidden="true"><path d="M360-360v-240h240v240H360Zm80-80h80v-80h-80v80Zm-80 320v-80h-80q-33 0-56.5-23.5T200-280v-80h-80v-80h80v-80h-80v-80h80v-80q0-33 23.5-56.5T280-760h80v-80h80v80h80v-80h80v80h80q33 0 56.5 23.5T760-680v80h80v80h-80v80h80v80h-80v80q0 33-23.5 56.5T680-200h-80v80h-80v-80h-80v80h-80Zm320-160v-400H280v400h400ZM480-480Z"/></svg>
-        </span>
-        </div>
+        <button type="button" id="aiStatusBtn" class="ai-status-btn ai-status-loading" title="Verificando assistente IA…" aria-label="Status do assistente IA (chat-gpb)">
+          <span class="ai-status-icon" role="img" aria-hidden="true">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" width="28" height="28"><path d="M360-360v-240h240v240H360Zm80-80h80v-80h-80v80Zm-80 320v-80h-80q-33 0-56.5-23.5T200-280v-80h-80v-80h80v-80h-80v-80h80v-80q0-33 23.5-56.5T280-760h80v-80h80v80h80v-80h80v80h80q33 0 56.5 23.5T760-680v80h80v80h-80v80h80v80h-80v80q0 33-23.5 56.5T680-200h-80v80h-80v-80h-80v80h-80Zm320-160v-400H280v400h400ZM480-480Z"/></svg>
+          </span>
+        </button>
       </div>
     </header>
 
@@ -268,7 +268,26 @@
         </div>
         <div class="modal-body small text-pr-muted">
           <p class="mb-2">A geração de provas em PDF roda no <strong>OnRender</strong>, em plano gratuito — não é um servidor dedicado sempre ligado.</p>
-          <p class="mb-0">Após um período sem uso, o serviço &quot;dorme&quot; e pode levar alguns minutos para voltar. O ícone de ligação fica vermelho enquanto isso; quando ficar verde, você já pode gerar as provas.</p>
+          <p class="mb-0">Após um período sem uso, o serviço &quot;dorme&quot; e pode levar alguns minutos para voltar. O ícone de ligação fica cinza enquanto isso; quando ficar verde, você já pode gerar as provas.</p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Entendi</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="modalAiLocal" tabindex="-1" aria-labelledby="modalAiLocalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 class="modal-title h5" id="modalAiLocalLabel">Assistente IA (chat-gpb)</h2>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+        </div>
+        <div class="modal-body small text-pr-muted">
+          <p class="mb-2">Por enquanto a IA <strong>só funciona localmente</strong>: é preciso ter o <strong>chat-gpb</strong> rodando no seu computador (por padrão em <code class="text-light">http://127.0.0.1:8765</code>), com Ollama e o modelo configurados.</p>
+          <p class="mb-2">Infelizmente o projeto ainda <strong>não consegue hospedar o chat-gpb em nenhum servidor</strong> (incluindo esta versão publicada no GitHub Pages). Talvez no futuro isso seja possível.</p>
+          <p class="mb-0">Se o chat-gpb estiver ativo aí na sua máquina, o ícone do chip ficará <strong>verde</strong> e você poderá usar «Gerar questão», «Melhorar» e as demais funções de IA como hoje.</p>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Entendi</button>

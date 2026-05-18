@@ -732,6 +732,7 @@
   let apiOnline = false;
   let apiOfflineModalInstance = null;
   let gerarProvasModalInstance = null;
+  let aiLocalModalInstance = null;
   const modalAnexosPendentes = {
     gerarQuestao: [],
     gerarProva: []
@@ -1061,11 +1062,27 @@
     }
   }
 
+  function openAiLocalModal() {
+    const el = document.getElementById("modalAiLocal");
+    if (!el || typeof bootstrap === "undefined") {
+      return;
+    }
+    if (!aiLocalModalInstance) {
+      aiLocalModalInstance = new bootstrap.Modal(el);
+    }
+    aiLocalModalInstance.show();
+  }
+
   function setAiUiVisible(online) {
     aiOnline = !!online;
-    const wrap = document.getElementById("aiStatusWrap");
-    if (wrap) {
-      wrap.classList.toggle("d-none", !aiOnline);
+    const btn = document.getElementById("aiStatusBtn");
+    if (btn) {
+      btn.classList.remove("ai-status-loading");
+      btn.classList.toggle("ai-status-online", aiOnline);
+      btn.classList.toggle("ai-status-offline", !aiOnline);
+      btn.title = aiOnline
+        ? "Assistente IA (chat-gpb) disponível localmente"
+        : "IA só funciona com o chat-gpb no seu computador. Clique para mais informações.";
     }
     document.querySelectorAll(".btn-ai-campo").forEach((el) => {
       el.classList.toggle("d-none", !aiOnline);
@@ -3604,6 +3621,12 @@
     }
   });
 
+  document.getElementById("aiStatusBtn")?.addEventListener("click", () => {
+    if (!aiOnline) {
+      openAiLocalModal();
+    }
+  });
+
   document.getElementById("btnGerarProvas")?.addEventListener("click", () => {
     if (gerarProvasInFlight) {
       return;
@@ -3638,6 +3661,8 @@
 
   if (globalThis.editorChatGpb) {
     globalThis.editorChatGpb.onStatusChange(setAiUiVisible);
+  } else {
+    setAiUiVisible(false);
   }
   if (globalThis.editorBackendApi) {
     globalThis.editorBackendApi.onStatusChange(setApiUiOnline);
