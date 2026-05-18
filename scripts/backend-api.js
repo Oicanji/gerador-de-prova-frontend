@@ -89,7 +89,7 @@
       healthDetail = {
         issue: "network",
         hint:
-          "Nao foi possivel contactar a API a partir desta pagina. Causas comuns: extensao bloqueando (uBlock, AdBlock, Brave Shields) — veja ERR_BLOCKED_BY_CLIENT no console; ou CORS nao configurado no Render (variavel CORS_ORIGIN=https://oicanji.github.io). Abra o link de teste abaixo num separador: se mostrar {\"status\":\"ok\"} mas o icone continua cinza, e bloqueador ou CORS.",
+          "Provámente o servidor está dormindo. Tente novamente em alguns minutos.",
       };
       notifyStatus(false);
       return false;
