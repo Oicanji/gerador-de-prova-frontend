@@ -494,6 +494,26 @@
     };
   }
 
+  function mergePrQuestionContinuationBlocks(blocks) {
+    const merged = [];
+    for (const block of blocks) {
+      const t = String(block || "").trim();
+      if (!t) {
+        continue;
+      }
+      const hasPergunta = /^\s*pergunta\s*:/im.test(t);
+      const startsWithContinuation = /^\s*(tipo|opcoes|combinacoes|coluna_direita|direita|linhas|resposta|eh_opcional|apenas_renderizar_sozinha|peso|foto_enunciado|encadeia_com)\s*:/im.test(
+        t
+      );
+      if (merged.length > 0 && !hasPergunta && startsWithContinuation) {
+        merged[merged.length - 1] = `${merged[merged.length - 1]}\n\n${t}`;
+      } else {
+        merged.push(t);
+      }
+    }
+    return merged;
+  }
+
   function isQuestionBlockImport(block) {
     if (!block) {
       return false;
@@ -519,10 +539,12 @@
   }
 
   function parseMarkdownPrImport(content) {
-    const blocks = content
-      .split(/\r?\n\s*\r?\n/g)
-      .map(normalizeImportBlock)
-      .filter(Boolean);
+    const blocks = mergePrQuestionContinuationBlocks(
+      content
+        .split(/\r?\n\s*\r?\n/g)
+        .map(normalizeImportBlock)
+        .filter(Boolean)
+    );
     let meta = null;
     let startIdx = 0;
     if (blocks[0] && isMetaBlockImport(blocks[0])) {
@@ -1336,7 +1358,7 @@
   }
 
   function applyGeneratedQuestionFromAi(q, data, tipo) {
-    const t = normalizeTipo(tipo);
+    const t = normalizeTipo(tipo) || "multipla-escolha";
     q.tipo = t;
     q.pergunta = String(data.pergunta || "").trim();
     if (t === "multipla-escolha") {
@@ -1838,6 +1860,9 @@
       const encSel = card.querySelector('[data-field="encadeia_com_stable_key"]');
       const ev = encSel && encSel.value ? String(encSel.value).trim() : "";
       q.encadeia_com_stable_key = ev || null;
+      if (!normalizeTipo(q.tipo)) {
+        q.tipo = "multipla-escolha";
+      }
       if (pq) {
         if (pq.foto_enunciado_bytes && pq.foto_enunciado_bytes.byteLength) {
           q.foto_enunciado_bytes = pq.foto_enunciado_bytes;
@@ -1859,8 +1884,8 @@
     if (!q.pergunta || !String(q.pergunta).trim()) {
       errors.push(`${id}: campo pergunta é obrigatório.`);
     }
-    const tipo = normalizeTipo(q.tipo);
-    if (!tipo || !TIPOS.has(tipo)) {
+    const tipo = normalizeTipo(q.tipo) || "multipla-escolha";
+    if (!TIPOS.has(tipo)) {
       errors.push(`${id}: tipo inválido. Use múltipla escolha, discursiva, verdadeiro/falso ou relacionar.`);
       return errors;
     }
@@ -2317,7 +2342,7 @@
   }
 
   function serializeQuestionBlock(q, questionIndex) {
-    const tipo = normalizeTipo(q.tipo);
+    const tipo = normalizeTipo(q.tipo) || "multipla-escolha";
     const lines = [];
     const perguntaLines = String(q.pergunta).split(/\r?\n/);
     const first = perguntaLines[0] ?? "";
