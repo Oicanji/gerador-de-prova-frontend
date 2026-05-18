@@ -52,6 +52,8 @@
   ];
 
   const META_SESSION_KEY = "ifsc-editor-pr-meta-v1";
+  const POPUP_ALLOWED_KEY = "gerador-prova-popup-allowed";
+  const POPUP_SKIP_SESSION_KEY = "gerador-prova-popup-skip-session";
 
   const META_HINTS = {
     nome_professor: "Ex.: Nome completo do professor",
@@ -717,7 +719,8 @@
     prLoaded: false,
     prDisplayName: "",
     generatedPdfBlob: null,
-    generatedPdfObjectUrl: null
+    generatedPdfObjectUrl: null,
+    pdfPopupWindow: null
   };
 
   let correcaoPorRefByNorm = null;
@@ -733,6 +736,7 @@
   let apiOfflineModalInstance = null;
   let gerarProvasModalInstance = null;
   let aiLocalModalInstance = null;
+  let popupPermissionModalInstance = null;
   const modalAnexosPendentes = {
     gerarQuestao: [],
     gerarProva: []
@@ -852,6 +856,146 @@
     }
   }
 
+  function isPopupPermissionGranted() {
+    try {
+      return localStorage.getItem(POPUP_ALLOWED_KEY) === "1";
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function setPopupPermissionGranted() {
+    try {
+      localStorage.setItem(POPUP_ALLOWED_KEY, "1");
+    } catch (_) {}
+  }
+
+  function setPopupPermissionSkipSession() {
+    try {
+      sessionStorage.setItem(POPUP_SKIP_SESSION_KEY, "1");
+    } catch (_) {}
+  }
+
+  function shouldPromptPopupPermission() {
+    if (isPopupPermissionGranted()) {
+      return false;
+    }
+    try {
+      return sessionStorage.getItem(POPUP_SKIP_SESSION_KEY) !== "1";
+    } catch (_) {
+      return true;
+    }
+  }
+
+  function probePopupFromUserGesture() {
+    const w = window.open("about:blank", "_blank", "noopener,noreferrer");
+    if (!w) {
+      return false;
+    }
+    try {
+      w.opener = null;
+      w.document.title = "Gerador de prova";
+      w.document.body.innerHTML =
+        '<p style="font-family:system-ui,sans-serif;padding:1.5rem;color:#222">Pop-ups permitidos. Pode fechar esta aba.</p>';
+    } catch (_) {}
+    setTimeout(() => {
+      try {
+        if (w && !w.closed) {
+          w.close();
+        }
+      } catch (_) {}
+    }, 900);
+    return true;
+  }
+
+  function openPopupPermissionModal() {
+    const el = document.getElementById("modalPopupPermission");
+    if (!el || typeof bootstrap === "undefined") {
+      return;
+    }
+    if (!popupPermissionModalInstance) {
+      popupPermissionModalInstance = new bootstrap.Modal(el);
+    }
+    setPopupPermissionModalStatus("", false);
+    popupPermissionModalInstance.show();
+  }
+
+  function hidePopupPermissionModal() {
+    if (popupPermissionModalInstance) {
+      popupPermissionModalInstance.hide();
+    }
+  }
+
+  function setPopupPermissionModalStatus(message, success) {
+    const el = document.getElementById("modalPopupPermissionStatus");
+    if (!el) {
+      return;
+    }
+    const text = String(message || "").trim();
+    if (!text) {
+      el.classList.add("d-none");
+      el.textContent = "";
+      el.classList.remove("text-success", "text-danger");
+      return;
+    }
+    el.classList.remove("d-none", "text-success", "text-danger");
+    el.classList.add(success ? "text-success" : "text-danger");
+    el.textContent = text;
+  }
+
+  function handlePopupPermissionAllow() {
+    if (probePopupFromUserGesture()) {
+      setPopupPermissionGranted();
+      setPopupPermissionModalStatus("Pop-ups permitidos. O PDF abrirá em nova aba após gerar.", true);
+      setTimeout(hidePopupPermissionModal, 1400);
+      return;
+    }
+    setPopupPermissionModalStatus(
+      "O navegador bloqueou. No ícone de cadeado ou informações na barra de endereço, permita pop-ups para este site e clique novamente.",
+      false
+    );
+  }
+
+  function handlePopupPermissionLater() {
+    setPopupPermissionSkipSession();
+    hidePopupPermissionModal();
+  }
+
+  function maybeShowPopupPermissionOnLoad() {
+    if (!shouldPromptPopupPermission()) {
+      return;
+    }
+    requestAnimationFrame(() => {
+      setTimeout(openPopupPermissionModal, 400);
+    });
+  }
+
+  function closePdfPopupWindow() {
+    const w = state.pdfPopupWindow;
+    state.pdfPopupWindow = null;
+    if (w && !w.closed) {
+      try {
+        w.close();
+      } catch (_) {}
+    }
+  }
+
+  function preparePdfPopupWindow() {
+    closePdfPopupWindow();
+    const w = window.open("about:blank", "_blank", "noopener,noreferrer");
+    if (!w) {
+      return false;
+    }
+    state.pdfPopupWindow = w;
+    try {
+      w.opener = null;
+      w.document.title = "Gerando PDF…";
+      w.document.body.innerHTML =
+        '<p style="font-family:system-ui,sans-serif;padding:1.5rem;color:#222">Gerando provas… Esta aba mostrará o PDF quando estiver pronto.</p>';
+    } catch (_) {}
+    return true;
+  }
+
   function openGeneratedPdfInNewTab() {
     if (!state.generatedPdfObjectUrl) {
       return false;
@@ -871,6 +1015,27 @@
     link.click();
     link.remove();
     return true;
+  }
+
+  function openPdfFromGeneration() {
+    if (!state.generatedPdfObjectUrl) {
+      closePdfPopupWindow();
+      return false;
+    }
+    const w = state.pdfPopupWindow;
+    state.pdfPopupWindow = null;
+    if (w && !w.closed) {
+      try {
+        w.location.replace(state.generatedPdfObjectUrl);
+        w.focus();
+        return true;
+      } catch (_) {
+        try {
+          w.close();
+        } catch (_) {}
+      }
+    }
+    return openGeneratedPdfInNewTab();
   }
 
   function setApiUiOnline(online, detail) {
@@ -1059,6 +1224,7 @@
       quantidade = 30;
     }
     hideGerarProvasModal();
+    preparePdfPopupWindow();
     gerarProvasInFlight = true;
     updateGerarProvasButton();
     try {
@@ -1085,7 +1251,7 @@
       });
       await importPrFromArrayBuffer(result.prUpdatedBuffer, "prova-atualizada.pr", true);
       setGeneratedPdf(result.pdfBlob);
-      if (!openGeneratedPdfInNewTab()) {
+      if (!openPdfFromGeneration()) {
         showValidationErrors(
           ["Clique em Ver PDF para abrir as provas (o navegador pode ter bloqueado a abertura automática)."],
           { title: "Provas geradas:", variant: "success", scroll: true }
@@ -1094,6 +1260,7 @@
         showValidationErrors([]);
       }
     } catch (err) {
+      closePdfPopupWindow();
       showValidationErrors([String(err && err.message ? err.message : err)], {
         title: "Erro ao gerar provas:",
         scroll: true,
@@ -3748,6 +3915,11 @@
   document.getElementById("btnVerPdf")?.addEventListener("click", () => {
     openGeneratedPdfInNewTab();
   });
+
+  document.getElementById("modalPopupPermissionAllow")?.addEventListener("click", handlePopupPermissionAllow);
+  document.getElementById("modalPopupPermissionLater")?.addEventListener("click", handlePopupPermissionLater);
+
+  maybeShowPopupPermissionOnLoad();
 
   if (globalThis.editorChatGpb) {
     globalThis.editorChatGpb.onStatusChange(setAiUiVisible);
