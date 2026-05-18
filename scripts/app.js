@@ -1026,9 +1026,7 @@
     if (quantidade > 30) {
       quantidade = 30;
     }
-    if (gerarProvasModalInstance) {
-      gerarProvasModalInstance.hide();
-    }
+    hideGerarProvasModal();
     gerarProvasInFlight = true;
     updateGerarProvasButton();
     try {
@@ -1057,7 +1055,10 @@
       setGeneratedPdf(result.pdfBlob);
       showValidationErrors([]);
     } catch (err) {
-      showValidationErrors([String(err && err.message ? err.message : err)]);
+      showValidationErrors([String(err && err.message ? err.message : err)], {
+        title: "Erro ao gerar provas:",
+        scroll: true,
+      });
     } finally {
       gerarProvasInFlight = false;
       const btn = document.getElementById("btnGerarProvas");
@@ -1065,6 +1066,16 @@
         btn.title = "";
       }
       updateGerarProvasButton();
+    }
+  }
+
+  function hideGerarProvasModal() {
+    const confirmBtn = document.getElementById("gerarProvasConfirm");
+    if (confirmBtn && typeof confirmBtn.blur === "function") {
+      confirmBtn.blur();
+    }
+    if (gerarProvasModalInstance) {
+      gerarProvasModalInstance.hide();
     }
   }
 
@@ -2367,16 +2378,26 @@
     return chunks.join("\n\n") + "\n";
   }
 
-  function showValidationErrors(errors) {
+  function showValidationErrors(errors, options) {
     const el = document.getElementById("validationAlert");
+    if (!el) {
+      return;
+    }
     if (!errors.length) {
       el.classList.add("d-none");
       el.textContent = "";
       return;
     }
+    const opts = options || {};
+    const title = opts.title || "Corrija antes de exportar:";
     el.classList.remove("d-none");
-    el.innerHTML = "<strong>Corrija antes de exportar:</strong><ul class=\"mb-0 mt-2\">" +
-      errors.map((e) => `<li>${escapeHtml(e)}</li>`).join("") + "</ul>";
+    el.innerHTML =
+      `<strong>${escapeHtml(title)}</strong><ul class="mb-0 mt-2">` +
+      errors.map((e) => `<li>${escapeHtml(e)}</li>`).join("") +
+      "</ul>";
+    if (opts.scroll !== false) {
+      el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
   }
 
   function render() {

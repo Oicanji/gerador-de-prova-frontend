@@ -555,5 +555,14 @@
     startStatusPolling,
   };
 
-  startStatusPolling();
+  const host = typeof location !== "undefined" ? location.hostname : "";
+  const localChatGpb =
+    host === "localhost" ||
+    host === "127.0.0.1" ||
+    (typeof location !== "undefined" && location.protocol === "file:");
+  if (localChatGpb) {
+    startStatusPolling();
+  } else {
+    notifyStatus(false);
+  }
 })();
