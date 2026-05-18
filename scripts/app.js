@@ -827,18 +827,50 @@
     }
   }
 
+  function normalizePdfBlob(blob) {
+    if (!blob || !blob.size) {
+      return null;
+    }
+    if (blob.type === "application/pdf") {
+      return blob;
+    }
+    return new Blob([blob], { type: "application/pdf" });
+  }
+
   function setGeneratedPdf(blob) {
     revokeGeneratedPdfUrl();
-    state.generatedPdfBlob = blob || null;
+    const pdfBlob = normalizePdfBlob(blob);
+    state.generatedPdfBlob = pdfBlob;
     const btnVer = document.getElementById("btnVerPdf");
-    if (blob) {
-      state.generatedPdfObjectUrl = URL.createObjectURL(blob);
+    if (pdfBlob) {
+      state.generatedPdfObjectUrl = URL.createObjectURL(pdfBlob);
       if (btnVer) {
         btnVer.classList.remove("d-none");
       }
     } else if (btnVer) {
       btnVer.classList.add("d-none");
     }
+  }
+
+  function openGeneratedPdfInNewTab() {
+    if (!state.generatedPdfObjectUrl) {
+      return false;
+    }
+    const opened = window.open(state.generatedPdfObjectUrl, "_blank", "noopener,noreferrer");
+    if (opened) {
+      try {
+        opened.opener = null;
+      } catch (_) {}
+      return true;
+    }
+    const link = document.createElement("a");
+    link.href = state.generatedPdfObjectUrl;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    return true;
   }
 
   function setApiUiOnline(online, detail) {
@@ -1000,8 +1032,8 @@
       return norm.endsWith("todas-provas.pdf") || norm.endsWith("gerado/todas-provas.pdf");
     });
     if (pdfKey) {
-      const pdfBlob = await zip.file(pdfKey).async("blob");
-      setGeneratedPdf(pdfBlob);
+      const pdfBytes = await zip.file(pdfKey).async("uint8array");
+      setGeneratedPdf(new Blob([pdfBytes], { type: "application/pdf" }));
     }
     await runCorrigirTodosGabaritos({ silentNoData: true });
     updateCorrigirTabBadge(correcaoPorRefByNorm ? Object.keys(correcaoPorRefByNorm).length : 0);
@@ -1053,7 +1085,14 @@
       });
       await importPrFromArrayBuffer(result.prUpdatedBuffer, "prova-atualizada.pr", true);
       setGeneratedPdf(result.pdfBlob);
-      showValidationErrors([]);
+      if (!openGeneratedPdfInNewTab()) {
+        showValidationErrors(
+          ["Clique em Ver PDF para abrir as provas (o navegador pode ter bloqueado a abertura automática)."],
+          { title: "Provas geradas:", variant: "success", scroll: true }
+        );
+      } else {
+        showValidationErrors([]);
+      }
     } catch (err) {
       showValidationErrors([String(err && err.message ? err.message : err)], {
         title: "Erro ao gerar provas:",
@@ -2390,7 +2429,8 @@
     }
     const opts = options || {};
     const title = opts.title || "Corrija antes de exportar:";
-    el.classList.remove("d-none");
+    el.classList.remove("d-none", "alert-danger", "alert-success");
+    el.classList.add(opts.variant === "success" ? "alert-success" : "alert-danger");
     el.innerHTML =
       `<strong>${escapeHtml(title)}</strong><ul class="mb-0 mt-2">` +
       errors.map((e) => `<li>${escapeHtml(e)}</li>`).join("") +
@@ -3681,9 +3721,7 @@
   });
 
   document.getElementById("btnVerPdf")?.addEventListener("click", () => {
-    if (state.generatedPdfObjectUrl) {
-      window.open(state.generatedPdfObjectUrl, "_blank", "noopener,noreferrer");
-    }
+    openGeneratedPdfInNewTab();
   });
 
   if (globalThis.editorChatGpb) {

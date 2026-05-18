@@ -206,7 +206,8 @@
       throw new Error("ZIP de resultado sem todas-provas.pdf");
     }
     const prUpdatedBuffer = await zip.file(prKey).async("arraybuffer");
-    const pdfBlob = await zip.file(pdfKey).async("blob");
+    const pdfBytes = await zip.file(pdfKey).async("uint8array");
+    const pdfBlob = new Blob([pdfBytes], { type: "application/pdf" });
     return { prUpdatedBuffer, pdfBlob };
   }
 
