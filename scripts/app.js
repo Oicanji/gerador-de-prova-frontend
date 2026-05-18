@@ -844,6 +844,7 @@
     apiOnline = !!online;
     const btn = document.getElementById("apiStatusBtn");
     if (btn) {
+      btn.classList.remove("api-status-loading");
       btn.classList.toggle("api-status-online", apiOnline);
       btn.classList.toggle("api-status-offline", !apiOnline);
       btn.title = apiOnline

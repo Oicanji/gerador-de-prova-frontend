@@ -13,8 +13,11 @@
     <header class="mb-4 d-flex justify-content-between align-items-center gap-3">
       <h1 class="h3 mb-0">Gerador de prova(ineitor)</h1>
       <div class="header-status-group d-flex align-items-center gap-2 flex-shrink-0">
-        <button type="button" id="apiStatusBtn" class="api-status-btn api-status-offline" title="Servidor de geração indisponível — o sistema pode estar iniciando" aria-label="Status do servidor de geração">
-          <img src="assets/icon/link.svg" alt="" width="28" height="28" class="api-status-icon-img">
+        <button type="button" id="apiStatusBtn" class="api-status-btn api-status-loading" title="Verificando servidor de geração…" aria-label="Status do servidor de geração">
+          <svg class="api-status-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="28" height="28" aria-hidden="true">
+            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+          </svg>
         </button>
         <div id="aiStatusWrap" class="d-none" title="Assistente IA (chat-gpb) disponível">
         <span id="aiStatusIcon" class="ai-status-icon ai-status-online" role="img" aria-label="IA disponível">

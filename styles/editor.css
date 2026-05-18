@@ -283,7 +283,7 @@ hr {
   background: transparent;
   cursor: pointer;
   border-radius: 6px;
-  color: #e85d5d;
+  color: var(--pr-muted);
 }
 
 .api-status-btn:hover,
@@ -292,17 +292,26 @@ hr {
   outline: none;
 }
 
+.api-status-btn.api-status-loading,
+.api-status-btn.api-status-offline {
+  color: #9a9a9a;
+}
+
 .api-status-btn.api-status-online {
   color: #3ddc84;
 }
 
-.api-status-btn.api-status-offline {
-  color: #e85d5d;
-}
-
-.api-status-icon-img {
+.api-status-btn .api-status-icon {
   display: block;
   pointer-events: none;
+}
+
+.api-status-btn .api-status-icon path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 #btnGerarProvas .spinner-border {
