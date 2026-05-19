@@ -1,4 +1,5 @@
 - Ajustar campos de data e colocar data pickers.
+- Considerar valor padrão
 - Colcoar cabeçario oficial do IFSC no pdf.
 - Leitor de gabarito via foto e sem IA (ao menos sem IA paga).
 - Tela de sobre do projeto.
@@ -16,4 +17,4 @@ RIAN1:
    Cabeçario profissional e formal.
 
 
-   
+
