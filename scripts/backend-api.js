@@ -2,11 +2,13 @@
   const STORAGE_URL_KEY = "ifsc-editor-pr-backend-url";
   const DEFAULT_BASE_URL = "https://gerador-prova-api.oicanji.workers.dev";
   const CHUNK_SIZE = 5 * 1024 * 1024;
-  const HEALTH_POLL_MS = 15000;
+  const HEALTH_POLL_MS = 60000;
   const JOB_POLL_MS = 5000;
   const MAX_QUANTIDADE = 30;
-  const FETCH_RETRY_MAX = 4;
-  const FETCH_RETRY_MS = 2500;
+  const FETCH_RETRY_MAX = 8;
+  const FETCH_RETRY_MS = 3000;
+  const WAKE_MAX_ATTEMPTS = 90;
+  const WAKE_MS = 2000;
 
   const cfg =
     typeof globalThis.EDITOR_BACKEND_CONFIG === "object" && globalThis.EDITOR_BACKEND_CONFIG
@@ -55,6 +57,10 @@
     return headers;
   }
 
+  function sleep(ms) {
+    return new Promise((r) => setTimeout(r, ms));
+  }
+
   function isRetryableStatus(status) {
     return status === 524 || status === 502 || status === 503 || status === 504;
   }
@@ -65,14 +71,14 @@
       try {
         const res = await fetch(url, init);
         if (isRetryableStatus(res.status) && attempt < FETCH_RETRY_MAX - 1) {
-          await new Promise((r) => setTimeout(r, FETCH_RETRY_MS * (attempt + 1)));
+          await sleep(FETCH_RETRY_MS * (attempt + 1));
           continue;
         }
         return res;
       } catch (err) {
         lastErr = err;
         if (attempt < FETCH_RETRY_MAX - 1) {
-          await new Promise((r) => setTimeout(r, FETCH_RETRY_MS * (attempt + 1)));
+          await sleep(FETCH_RETRY_MS * (attempt + 1));
           continue;
         }
       }
@@ -88,8 +94,8 @@
   async function parseErrorBody(res) {
     if (res.status === 524) {
       return (
-        "Timeout Cloudflare (524). Tente de novo em instantes; o servidor no Render pode estar acordando. " +
-        "O editor envia o .pr e baixa o PDF em pedacos de ate 5 MB pelo Worker."
+        "Timeout Cloudflare (524): o Render demorou a responder. " +
+        "Aguarde o indicador de servidor acordar e tente de novo."
       );
     }
     try {
@@ -99,39 +105,76 @@
     return `Erro ${res.status}`;
   }
 
+  async function pingWorker() {
+    try {
+      const res = await fetch(`${getBaseUrl()}/health`, {
+        method: "GET",
+        cache: "no-store",
+      });
+      if (!res.ok) return false;
+      const data = await res.json();
+      return data && data.status === "ok";
+    } catch (_) {
+      return false;
+    }
+  }
+
+  async function pingBackendRender() {
+    try {
+      const res = await fetch(`${getBaseUrl()}/health/backend`, {
+        method: "GET",
+        cache: "no-store",
+      });
+      if (!res.ok) return false;
+      const data = await res.json();
+      return data && data.status === "ok";
+    } catch (_) {
+      return false;
+    }
+  }
+
+  async function ensureBackendAwake() {
+    for (let i = 0; i < WAKE_MAX_ATTEMPTS; i += 1) {
+      if (await pingBackendRender()) {
+        healthDetail = { issue: null, hint: null };
+        notifyStatus(true);
+        return true;
+      }
+      healthDetail = {
+        issue: "server",
+        hint: "Acordando servidor no Render (pode levar 1-2 min)...",
+      };
+      notifyStatus(await pingWorker());
+      await sleep(WAKE_MS);
+    }
+    throw new Error(
+      "Servidor de geracao nao respondeu a tempo. Aguarde um minuto e clique em Gerar provas novamente."
+    );
+  }
+
   async function checkHealth() {
     healthDetail = { issue: null, hint: null };
-    try {
-      const res = await fetchWithRetry(
-        `${getBaseUrl()}/health`,
-        { method: "GET", cache: "no-store" },
-        "Health"
-      );
-      if (!res.ok) {
-        healthDetail = {
-          issue: "server",
-          hint: "O servidor respondeu com erro. Pode estar iniciando no Render.",
-        };
-        notifyStatus(false);
-        return false;
-      }
-      const data = await res.json();
-      const isOnline = data && data.status === "ok";
-      if (isOnline) {
-        healthDetail = { issue: null, hint: null };
-      } else {
-        healthDetail = { issue: "server", hint: "Resposta inesperada do servidor." };
-      }
-      notifyStatus(isOnline);
-      return isOnline;
-    } catch (err) {
+    const workerOk = await pingWorker();
+    if (!workerOk) {
       healthDetail = {
         issue: "network",
-        hint: "Provavelmente o servidor esta dormindo. Tente novamente em alguns minutos.",
+        hint: "Proxy Cloudflare inacessivel.",
       };
       notifyStatus(false);
       return false;
     }
+    const renderOk = await pingBackendRender();
+    if (renderOk) {
+      healthDetail = { issue: null, hint: null };
+      notifyStatus(true);
+      return true;
+    }
+    healthDetail = {
+      issue: "server",
+      hint: "Proxy ok; servidor Render dormindo (geracao de provas aguarda acordar).",
+    };
+    notifyStatus(true);
+    return true;
   }
 
   function startHealthPolling() {
@@ -157,7 +200,53 @@
     return `${getBaseUrl()}/api/v1${path}`;
   }
 
+  function jobSettled(status) {
+    return (
+      status === "queued" ||
+      status === "processing" ||
+      status === "completed" ||
+      status === "failed"
+    );
+  }
+
+  async function finishUpload(jobId) {
+    const res = await fetchWithRetry(
+      jobApi(`/jobs/${encodeURIComponent(jobId)}/upload/finish`),
+      { method: "POST", headers: authHeaders() },
+      "Finalizar upload"
+    );
+    if (res.ok) {
+      return res.json().catch(() => ({}));
+    }
+    if (res.status === 409 || res.status === 524) {
+      const st = await getJobStatus(jobId);
+      if (jobSettled(st.status)) {
+        return { jobId, status: st.status, recovered: true };
+      }
+    }
+    throw new Error(await parseErrorBody(res));
+  }
+
+  async function startJob(jobId) {
+    const res = await fetchWithRetry(
+      jobApi(`/jobs/${encodeURIComponent(jobId)}/start`),
+      { method: "POST", headers: authHeaders() },
+      "Iniciar geracao"
+    );
+    if (res.ok) {
+      return res.json().catch(() => ({}));
+    }
+    if (res.status === 409 || res.status === 524) {
+      const st = await getJobStatus(jobId);
+      if (st.status === "processing" || st.status === "completed" || st.status === "queued") {
+        return { jobId, status: st.status, recovered: true };
+      }
+    }
+    throw new Error(await parseErrorBody(res));
+  }
+
   async function createJobChunkedUpload(prBlob, filename, quantidade, randomizar, gerarGabarito) {
+    await ensureBackendAwake();
     const prSize = prBlob.size;
     const sessionRes = await fetchWithRetry(
       jobApi("/jobs/session"),
@@ -181,14 +270,18 @@
     if (!session || !session.jobId) {
       throw new Error("Resposta invalida ao criar sessao de upload.");
     }
+    const jobId = session.jobId;
     const chunkSize = session.chunkSize || CHUNK_SIZE;
     const totalChunks = session.uploadChunks || Math.ceil(prSize / chunkSize);
     for (let i = 0; i < totalChunks; i += 1) {
+      if (i === 0 || i === totalChunks - 1) {
+        await ensureBackendAwake();
+      }
       const start = i * chunkSize;
       const end = Math.min(prSize, start + chunkSize);
       const slice = prBlob.slice(start, end);
       const putRes = await fetchWithRetry(
-        jobApi(`/jobs/${encodeURIComponent(session.jobId)}/upload/${i}`),
+        jobApi(`/jobs/${encodeURIComponent(jobId)}/upload/${i}`),
         {
           method: "PUT",
           headers: authHeaders({ "Content-Type": "application/octet-stream" }),
@@ -200,15 +293,11 @@
         throw new Error(await parseErrorBody(putRes));
       }
     }
-    const finishRes = await fetchWithRetry(
-      jobApi(`/jobs/${encodeURIComponent(session.jobId)}/upload/finish`),
-      { method: "POST", headers: authHeaders() },
-      "Finalizar upload"
-    );
-    if (!finishRes.ok) {
-      throw new Error(await parseErrorBody(finishRes));
-    }
-    return { jobId: session.jobId, quantidade: session.quantidade || quantidade };
+    await ensureBackendAwake();
+    await finishUpload(jobId);
+    await ensureBackendAwake();
+    await startJob(jobId);
+    return { jobId, quantidade: session.quantidade || quantidade };
   }
 
   async function createJob(prBlob, filename, quantidade, randomizar, gerarGabarito) {
@@ -246,7 +335,7 @@
       if (status.status === "failed") {
         throw new Error(status.error || "Falha na geracao das provas.");
       }
-      await new Promise((r) => setTimeout(r, JOB_POLL_MS));
+      await sleep(JOB_POLL_MS);
     }
   }
 
@@ -267,10 +356,11 @@
     }
     const chunks = [];
     for (let i = 0; i < partMeta.totalChunks; i += 1) {
+      if (i === 0 || i % 3 === 0) {
+        await ensureBackendAwake();
+      }
       const res = await fetchWithRetry(
-        jobApi(
-          `/jobs/${encodeURIComponent(jobId)}/result/chunk/${part}/${i}`
-        ),
+        jobApi(`/jobs/${encodeURIComponent(jobId)}/result/chunk/${part}/${i}`),
         { method: "GET", headers: authHeaders(), cache: "no-store" },
         `Download ${part} ${i + 1}/${partMeta.totalChunks}`
       );
@@ -292,6 +382,7 @@
   }
 
   async function downloadResultChunked(jobId, onProgress) {
+    await ensureBackendAwake();
     const infoRes = await fetchWithRetry(
       jobApi(`/jobs/${encodeURIComponent(jobId)}/result/info`),
       { method: "GET", headers: authHeaders(), cache: "no-store" },
@@ -322,7 +413,6 @@
     gerarGabarito = true,
     onProgress
   }) {
-    await checkHealth();
     const { jobId } = await createJob(prBlob, filename, quantidade, randomizar, gerarGabarito);
     const completed = await waitForJob(jobId, onProgress);
     const extracted = await downloadResultChunked(jobId, onProgress);
@@ -343,6 +433,7 @@
     isOnline: () => online,
     getHealthDetail,
     checkHealth,
+    ensureBackendAwake,
     onStatusChange,
     startGeneration,
     getApiKey,
