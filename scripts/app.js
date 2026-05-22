@@ -436,9 +436,6 @@
       if (resposta) {
         throw new Error(`${id}: texto-imagem não deve ter resposta.`);
       }
-      if (f.encadeia_com != null && String(f.encadeia_com).trim() !== "") {
-        throw new Error(`${id}: texto-imagem não suporta encadeia_com.`);
-      }
     }
     if (tipo !== "relacionar" && coluna_direita != null && coluna_direita.length > 0) {
       throw new Error(`${id}: coluna_direita só é permitido para tipo relacionar.`);
@@ -507,7 +504,7 @@
       foto_enunciado = s;
     }
     let encadeia_com = null;
-    if (tipo !== "texto-imagem" && f.encadeia_com != null && String(f.encadeia_com).trim() !== "") {
+    if (f.encadeia_com != null && String(f.encadeia_com).trim() !== "") {
       const rawE = String(f.encadeia_com).trim();
       const me = /^Q\s*(\d+)$/i.exec(rawE);
       if (!me) {
@@ -2462,14 +2459,14 @@
         }
       }
     }
+    if (q.encadeia_com_stable_key) {
+      const ji = state.questions.findIndex((x) => x.stableKey === q.encadeia_com_stable_key);
+      if (ji >= 0) {
+        lines.push(`encadeia_com: Q${ji + 1}`);
+      }
+    }
     if (tipo !== "texto-imagem") {
       lines.push(`eh_opcional: ${q.eh_opcional ? "sim" : "nao"}`);
-      if (q.encadeia_com_stable_key) {
-        const ji = state.questions.findIndex((x) => x.stableKey === q.encadeia_com_stable_key);
-        if (ji >= 0) {
-          lines.push(`encadeia_com: Q${ji + 1}`);
-        }
-      }
       lines.push(`apenas_renderizar_sozinha: ${q.apenas_renderizar_sozinha ? "sim" : "nao"}`);
     }
     const pesoRaw = q.peso == null ? "" : String(q.peso).trim();
@@ -2567,6 +2564,7 @@
     applyMetaInputPlaceholders();
     document.getElementById("outFilename").value = state.filename;
     updateProvaTabBadge();
+    document.querySelectorAll(".question-card").forEach(syncPanels);
   }
 
   const SVG_RESPOSTA_THUMB =
@@ -2783,7 +2781,7 @@
       </div>
     </div>
     <div class="row g-3 mb-3">
-      <div class="col-md-4">
+      <div class="${isTextoImagem ? "col-12" : "col-md-4"}">
         <label class="form-label" for="tipo_${i}">Tipo</label>
         <select class="form-select" id="tipo_${i}" data-field="tipo">
           <option value="multipla-escolha" ${tipo === "multipla-escolha" ? "selected" : ""}>Múltipla escolha</option>
@@ -2797,7 +2795,7 @@
         <label class="form-label" for="linhas_${i}">Linhas</label>
         <input type="number" class="form-control" id="linhas_${i}" data-field="linhas" min="1" value="${escapeAttr(String(q.linhas || 3))}" placeholder="Linhas em branco">
       </div>
-      <div class="col-md-4">
+      <div class="col-md-4 ${isTextoImagem ? "d-none" : ""}" data-panel="peso">
         <label class="form-label" for="peso_${i}">Peso</label>
         <div class="d-flex gap-2 align-items-stretch">
           <input type="text" class="form-control flex-grow-1" id="peso_${i}" data-field="peso" value="${escapeAttr(q.peso != null ? String(q.peso) : "")}" placeholder="Opcional, 0 a 10">
@@ -2805,7 +2803,7 @@
         </div>
       </div>
     </div>
-    <div class="mb-3 ${isDisc ? "d-none" : ""}" data-panel="opcoes">
+    <div class="mb-3 ${isDisc || isTextoImagem ? "d-none" : ""}" data-panel="opcoes">
       ${
         isRel
           ? `<div class="row g-2 align-items-start">
@@ -2828,7 +2826,7 @@
       ${combsHtml}
       <button type="button" class="btn btn-sm btn-outline-light" data-action="add-comb" data-q="${i}">Adicionar alternativa de resposta</button>
     </div>
-    <div class="mb-3 encadeio-toolbar d-flex flex-wrap align-items-center gap-2 w-100 ${isTextoImagem ? "d-none" : ""}">
+    <div class="mb-3 encadeio-toolbar d-flex flex-wrap align-items-center gap-2 w-100">
       <div class="d-flex flex-wrap align-items-center gap-2 flex-grow-1 justify-content-between">
         <label class="small text-pr-muted mb-0 d-flex align-items-center gap-1 text-nowrap">
           <img src="assets/icon/link.svg" width="18" height="18" class="question-header-ico" alt="" aria-hidden="true">
@@ -2844,7 +2842,7 @@
       </div>
       <p class="small text-pr-muted mb-0 w-100">Ao gerar várias versões, o grupo alterna entre as encadeadas sem repetir até completar o ciclo.</p>
     </div>
-    <div class="d-flex flex-wrap gap-3" data-panel="opcoes-row" ${isTextoImagem ? ' style="display:none!important"' : ""}>
+    <div class="d-flex flex-wrap gap-3 ${isTextoImagem ? "d-none" : ""}" data-panel="opcoes-row">
       <div class="form-check mb-0">
         <input class="form-check-input" type="checkbox" id="opt_${i}" data-field="eh_opcional" ${q.eh_opcional && !encLocked ? "checked" : ""} ${encLocked ? "disabled" : ""}>
         <label class="form-check-label" for="opt_${i}">Questão opcional</label>
@@ -2855,7 +2853,7 @@
       </div>
       <div class="form-check mb-0 ${isDisc ? "" : "d-none"}" data-panel="disc-colunas">
         <input class="form-check-input" type="checkbox" id="opt_disc_col_${i}" data-field="discursiva_em_colunas" ${q.discursiva_em_colunas ? "checked" : ""}>
-        <label class="form-check-label" for="opt_disc_col_${i}">Renderizar em colunas</label>
+        <label class="form-check-label" for="opt_disc_col_${i}">Partir o texto em dois</label>
       </div>
     </div>
     ${hiddenRespostas ? `<div class="visually-hidden">${hiddenRespostas}</div>` : ""}
@@ -2874,15 +2872,20 @@
     const colDirPanel = card.querySelector('[data-panel="col-dir"]');
     const combPanel = card.querySelector('[data-panel="combinacoes"]');
     const discColPanel = card.querySelector('[data-panel="disc-colunas"]');
-    const encToolbar = card.querySelector(".encadeio-toolbar");
+    const pesoPanel = card.querySelector('[data-panel="peso"]');
     const optRow = card.querySelector('[data-panel="opcoes-row"]');
+    const tipoCol = card.querySelector(".row.g-3.mb-3 > div:first-child");
     if (linhasPanel) linhasPanel.classList.toggle("d-none", !isDisc);
+    if (pesoPanel) pesoPanel.classList.toggle("d-none", isTextoImagem);
     if (opcoesPanel) opcoesPanel.classList.toggle("d-none", isDisc || isTextoImagem);
     if (colDirPanel) colDirPanel.classList.toggle("d-none", !isRel);
     if (combPanel) combPanel.classList.toggle("d-none", !isVf && !isRel);
     if (discColPanel) discColPanel.classList.toggle("d-none", !isDisc);
-    if (encToolbar) encToolbar.classList.toggle("d-none", isTextoImagem);
     if (optRow) optRow.classList.toggle("d-none", isTextoImagem);
+    if (tipoCol) {
+      tipoCol.classList.toggle("col-12", isTextoImagem);
+      tipoCol.classList.toggle("col-md-4", !isTextoImagem);
+    }
     const gerarBtn = card.querySelector('[data-action="ai-gerar-opcoes"]');
     if (gerarBtn) {
       gerarBtn.classList.toggle("d-none", isDisc || isTextoImagem || !aiOnline);
