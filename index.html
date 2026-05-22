@@ -308,6 +308,14 @@
           <p class="small text-pr-muted">O pacote atual será enviado ao servidor para compilar o PDF e atualizar o <code class="text-light">.pr</code> com as ordens sorteadas. A operação pode demorar vários minutos.</p>
           <label class="form-label" for="gerarProvasQuantidade">Quantas versões de prova?</label>
           <input type="number" class="form-control form-control-sm" id="gerarProvasQuantidade" min="1" max="30" value="1" style="max-width: 8rem;">
+          <div class="form-check mt-3 mb-0">
+            <input class="form-check-input" type="checkbox" id="gerarProvasRandomizar" checked>
+            <label class="form-check-label" for="gerarProvasRandomizar">Gerar randomicos</label>
+          </div>
+          <div class="form-check mt-2 mb-0">
+            <input class="form-check-input" type="checkbox" id="gerarProvasGabarito" checked>
+            <label class="form-check-label" for="gerarProvasGabarito">Gerar gabarito</label>
+          </div>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">Cancelar</button>

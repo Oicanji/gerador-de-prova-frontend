@@ -115,7 +115,7 @@
     return { ...healthDetail };
   }
 
-  async function createJob(prBlob, filename, quantidade) {
+  async function createJob(prBlob, filename, quantidade, randomizar, gerarGabarito) {
     const key = getApiKey();
     if (!key) {
       throw new Error("Chave API nao configurada em scripts/config.js");
@@ -124,6 +124,8 @@
     const form = new FormData();
     form.append("file", prBlob, filename || "fonte.pr");
     form.append("quantidade", String(q));
+    form.append("randomizar", randomizar !== false ? "sim" : "nao");
+    form.append("gerar_gabarito", gerarGabarito !== false ? "sim" : "nao");
     const res = await fetch(`${getBaseUrl()}/api/v1/jobs`, {
       method: "POST",
       headers: authHeaders(),
@@ -211,8 +213,15 @@
     return { prUpdatedBuffer, pdfBlob };
   }
 
-  async function startGeneration({ prBlob, filename, quantidade, onProgress }) {
-    const { jobId } = await createJob(prBlob, filename, quantidade);
+  async function startGeneration({
+    prBlob,
+    filename,
+    quantidade,
+    randomizar = true,
+    gerarGabarito = true,
+    onProgress
+  }) {
+    const { jobId } = await createJob(prBlob, filename, quantidade, randomizar, gerarGabarito);
     const completed = await waitForJob(jobId, onProgress);
     const zipBuffer = await downloadResult(jobId);
     const extracted = await extractResultZip(zipBuffer);

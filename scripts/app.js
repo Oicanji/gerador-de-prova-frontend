@@ -1,5 +1,11 @@
 (function () {
-  const TIPOS = new Set(["multipla-escolha", "discursiva", "verdadeiro_falso", "relacionar"]);
+  const TIPOS = new Set([
+    "multipla-escolha",
+    "discursiva",
+    "verdadeiro_falso",
+    "relacionar",
+    "texto-imagem"
+  ]);
 
   const DEFAULT_MC_OPCOES = 4;
   const DEFAULT_VF_COMBINACOES = 4;
@@ -237,6 +243,9 @@
     ) {
       return "relacionar";
     }
+    if (t === "texto_imagem" || t === "texto-imagem" || t === "texto" || t === "bloco") {
+      return "texto-imagem";
+    }
     return null;
   }
 
@@ -265,6 +274,7 @@
       resposta: "",
       eh_opcional: false,
       apenas_renderizar_sozinha: false,
+      discursiva_em_colunas: false,
       encadeia_com_stable_key: null,
       peso: null,
       foto_enunciado_basename_md: null,
@@ -323,7 +333,11 @@
   }
 
   function isPrBlockImport(block) {
-    return /^\s*pergunta\s*:/im.test(block);
+    return (
+      /^\s*pergunta\s*:/im.test(block) ||
+      /^\s*tipo\s*:\s*texto/im.test(block) ||
+      /^\s*tipo\s*:\s*bloco/im.test(block)
+    );
   }
 
   function parsePrFieldsImport(block) {
@@ -359,14 +373,18 @@
   function parsePrBlockToQuestionImport(block, index) {
     const id = `Q${index + 1}`;
     const f = parsePrFieldsImport(block);
-    if (!f.pergunta) {
-      throw new Error(`${id}: campo pergunta é obrigatório.`);
-    }
     const tipo = normalizeTipo(f.tipo);
     if (!tipo || !TIPOS.has(tipo)) {
       throw new Error(
-        `${id}: tipo inválido "${f.tipo}". Use multipla-escolha, discursiva, verdadeiro_falso ou relacionar.`
+        `${id}: tipo inválido "${f.tipo}". Use multipla-escolha, discursiva, verdadeiro_falso, relacionar ou texto-imagem.`
       );
+    }
+    const perguntaRaw = f.pergunta != null ? String(f.pergunta) : "";
+    if (tipo !== "texto-imagem" && !perguntaRaw.trim()) {
+      throw new Error(`${id}: campo pergunta é obrigatório.`);
+    }
+    if (tipo === "texto-imagem" && !perguntaRaw.trim() && !f.foto_enunciado) {
+      throw new Error(`${id}: texto-imagem exige pergunta ou foto_enunciado.`);
     }
     let opcoes = null;
     if (f.opcoes !== undefined && f.opcoes !== "") {
@@ -392,13 +410,36 @@
       f.resposta !== undefined && String(f.resposta).trim() !== ""
         ? f.resposta.trim()
         : null;
-    const eh_opcional = normalizeSimNaoImport(f.eh_opcional, false, "eh_opcional");
+    const eh_opcional =
+      tipo === "texto-imagem" ? false : normalizeSimNaoImport(f.eh_opcional, false, "eh_opcional");
     const apenas_renderizar_sozinha = normalizeSimNaoImport(
       f.apenas_renderizar_sozinha,
       false,
       "apenas_renderizar_sozinha"
     );
-    const peso = parsePesoImport(f.peso);
+    const discursiva_em_colunas = normalizeSimNaoImport(
+      f.discursiva_em_colunas,
+      false,
+      "discursiva_em_colunas"
+    );
+    const peso = tipo === "texto-imagem" ? null : parsePesoImport(f.peso);
+    if (tipo === "texto-imagem") {
+      if (opcoes && opcoes.length > 0) {
+        throw new Error(`${id}: texto-imagem não deve ter opcoes.`);
+      }
+      if (combinacoes && combinacoes.length > 0) {
+        throw new Error(`${id}: texto-imagem não deve ter combinacoes.`);
+      }
+      if (linhas) {
+        throw new Error(`${id}: linhas só é permitido para discursiva.`);
+      }
+      if (resposta) {
+        throw new Error(`${id}: texto-imagem não deve ter resposta.`);
+      }
+      if (f.encadeia_com != null && String(f.encadeia_com).trim() !== "") {
+        throw new Error(`${id}: texto-imagem não suporta encadeia_com.`);
+      }
+    }
     if (tipo !== "relacionar" && coluna_direita != null && coluna_direita.length > 0) {
       throw new Error(`${id}: coluna_direita só é permitido para tipo relacionar.`);
     }
@@ -466,7 +507,7 @@
       foto_enunciado = s;
     }
     let encadeia_com = null;
-    if (f.encadeia_com != null && String(f.encadeia_com).trim() !== "") {
+    if (tipo !== "texto-imagem" && f.encadeia_com != null && String(f.encadeia_com).trim() !== "") {
       const rawE = String(f.encadeia_com).trim();
       const me = /^Q\s*(\d+)$/i.exec(rawE);
       if (!me) {
@@ -479,7 +520,8 @@
     }
     return {
       id,
-      pergunta: f.pergunta,
+      ordem_fonte: index,
+      pergunta: perguntaRaw,
       tipo,
       opcoes,
       coluna_direita: tipo === "relacionar" ? coluna_direita : null,
@@ -488,6 +530,7 @@
       resposta,
       eh_opcional,
       apenas_renderizar_sozinha,
+      discursiva_em_colunas: tipo === "discursiva" ? discursiva_em_colunas : false,
       peso,
       foto_enunciado,
       encadeia_com
@@ -502,7 +545,7 @@
         continue;
       }
       const hasPergunta = /^\s*pergunta\s*:/im.test(t);
-      const startsWithContinuation = /^\s*(tipo|opcoes|combinacoes|coluna_direita|direita|linhas|resposta|eh_opcional|apenas_renderizar_sozinha|peso|foto_enunciado|encadeia_com)\s*:/im.test(
+      const startsWithContinuation = /^\s*(tipo|opcoes|combinacoes|coluna_direita|direita|linhas|resposta|eh_opcional|apenas_renderizar_sozinha|discursiva_em_colunas|peso|foto_enunciado|encadeia_com)\s*:/im.test(
         t
       );
       if (merged.length > 0 && !hasPergunta && startsWithContinuation) {
@@ -594,7 +637,12 @@
     let coluna_direita;
     let combinacoes;
     let linhasVal;
-    if (tipo === "discursiva") {
+    if (tipo === "texto-imagem") {
+      opcoes = blankOpcoes(DEFAULT_MC_OPCOES);
+      coluna_direita = blankOpcoes(DEFAULT_MC_OPCOES);
+      combinacoes = blankOpcoes(DEFAULT_VF_COMBINACOES);
+      linhasVal = null;
+    } else if (tipo === "discursiva") {
       opcoes = blankOpcoes(DEFAULT_MC_OPCOES);
       coluna_direita = blankOpcoes(DEFAULT_MC_OPCOES);
       combinacoes = blankOpcoes(DEFAULT_VF_COMBINACOES);
@@ -642,6 +690,8 @@
       resposta,
       eh_opcional: !!p.eh_opcional,
       apenas_renderizar_sozinha: !!p.apenas_renderizar_sozinha,
+      discursiva_em_colunas: !!p.discursiva_em_colunas,
+      ordem_fonte: p.ordem_fonte != null ? p.ordem_fonte : index,
       encadeia_com_stable_key: null,
       peso: p.peso != null && Number.isFinite(p.peso) ? p.peso : null,
       foto_enunciado_basename_md:
@@ -715,6 +765,7 @@
       return {
         ...tq,
         id: `Q${idx + 1}`,
+        ordem_fonte: tq.ordem_fonte != null ? tq.ordem_fonte : idx,
         encadeia_com
       };
     });
@@ -1081,10 +1132,14 @@
       const filename = ensurePrFilename(
         document.getElementById("outFilename").value || state.filename
       );
+      const randomizarEl = document.getElementById("gerarProvasRandomizar");
+      const gabaritoEl = document.getElementById("gerarProvasGabarito");
       const result = await api.startGeneration({
         prBlob,
         filename,
         quantidade,
+        randomizar: randomizarEl ? randomizarEl.checked : true,
+        gerarGabarito: gabaritoEl ? gabaritoEl.checked : true,
         onProgress(status) {
           const btn = document.getElementById("btnGerarProvas");
           if (!btn || !status || !status.progress) {
@@ -1812,6 +1867,9 @@
       q.eh_opcional = card.querySelector(`[data-field="eh_opcional"]`)?.checked ?? false;
       q.apenas_renderizar_sozinha =
         card.querySelector(`[data-field="apenas_renderizar_sozinha"]`)?.checked ?? false;
+      q.discursiva_em_colunas =
+        card.querySelector(`[data-field="discursiva_em_colunas"]`)?.checked ?? false;
+      q.ordem_fonte = idx;
       const pesoInput = card.querySelector(`[data-field="peso"]`)?.value ?? "";
       try {
         q.peso = parsePeso(pesoInput);
@@ -1881,13 +1939,23 @@
   function validateQuestion(q, index) {
     const id = `Q${index + 1}`;
     const errors = [];
-    if (!q.pergunta || !String(q.pergunta).trim()) {
-      errors.push(`${id}: campo pergunta é obrigatório.`);
-    }
     const tipo = normalizeTipo(q.tipo) || "multipla-escolha";
     if (!TIPOS.has(tipo)) {
-      errors.push(`${id}: tipo inválido. Use múltipla escolha, discursiva, verdadeiro/falso ou relacionar.`);
+      errors.push(`${id}: tipo inválido. Use múltipla escolha, discursiva, verdadeiro/falso, relacionar ou texto/imagem.`);
       return errors;
+    }
+    if (tipo === "texto-imagem") {
+      const hasText = q.pergunta && String(q.pergunta).trim();
+      const hasFoto =
+        (q.foto_enunciado_bytes && q.foto_enunciado_bytes.byteLength) ||
+        (q.foto_enunciado_basename_md && String(q.foto_enunciado_basename_md).trim());
+      if (!hasText && !hasFoto) {
+        errors.push(`${id}: texto/imagem exige enunciado ou imagem.`);
+      }
+      return errors;
+    }
+    if (!q.pergunta || !String(q.pergunta).trim()) {
+      errors.push(`${id}: campo pergunta é obrigatório.`);
     }
     let opcoes = q.opcoes ? q.opcoes.map((s) => String(s).trim()).filter(Boolean) : [];
     let linhas = q.linhas;
@@ -2344,19 +2412,26 @@
   function serializeQuestionBlock(q, questionIndex) {
     const tipo = normalizeTipo(q.tipo) || "multipla-escolha";
     const lines = [];
-    const perguntaLines = String(q.pergunta).split(/\r?\n/);
-    const first = perguntaLines[0] ?? "";
-    lines.push(`pergunta: ${first}`);
-    for (let i = 1; i < perguntaLines.length; i++) {
-      lines.push(perguntaLines[i]);
-    }
     lines.push(`tipo: ${tipo}`);
+    const perguntaLines = String(q.pergunta || "").split(/\r?\n/);
+    if (perguntaLines[0] != null && String(perguntaLines[0]).length > 0) {
+      lines.push(`pergunta: ${perguntaLines[0]}`);
+      for (let i = 1; i < perguntaLines.length; i++) {
+        lines.push(perguntaLines[i]);
+      }
+    } else if (tipo !== "texto-imagem") {
+      lines.push("pergunta: ");
+    }
     const fotoBasename = exportFotoBasenameForZip(q, questionIndex);
     if (fotoBasename) {
       lines.push(`foto_enunciado: ${fotoBasename}`);
     }
     if (tipo === "discursiva") {
       lines.push(`linhas: ${q.linhas}`);
+      if (q.discursiva_em_colunas) {
+        lines.push("discursiva_em_colunas: sim");
+      }
+    } else if (tipo === "texto-imagem") {
     } else if (tipo === "verdadeiro_falso") {
       const opcoes = q.opcoes.map((s) => String(s).trim()).filter(Boolean);
       lines.push(`opcoes: ${opcoes.join("; ")}`);
@@ -2387,14 +2462,16 @@
         }
       }
     }
-    lines.push(`eh_opcional: ${q.eh_opcional ? "sim" : "nao"}`);
-    if (q.encadeia_com_stable_key) {
-      const ji = state.questions.findIndex((x) => x.stableKey === q.encadeia_com_stable_key);
-      if (ji >= 0) {
-        lines.push(`encadeia_com: Q${ji + 1}`);
+    if (tipo !== "texto-imagem") {
+      lines.push(`eh_opcional: ${q.eh_opcional ? "sim" : "nao"}`);
+      if (q.encadeia_com_stable_key) {
+        const ji = state.questions.findIndex((x) => x.stableKey === q.encadeia_com_stable_key);
+        if (ji >= 0) {
+          lines.push(`encadeia_com: Q${ji + 1}`);
+        }
       }
+      lines.push(`apenas_renderizar_sozinha: ${q.apenas_renderizar_sozinha ? "sim" : "nao"}`);
     }
-    lines.push(`apenas_renderizar_sozinha: ${q.apenas_renderizar_sozinha ? "sim" : "nao"}`);
     const pesoRaw = q.peso == null ? "" : String(q.peso).trim();
     if (pesoRaw !== "") {
       const p = parsePeso(pesoRaw);
@@ -2576,6 +2653,7 @@
 
   function renderQuestionCard(q, i) {
     const tipo = q.tipo || "multipla-escolha";
+    const isTextoImagem = tipo === "texto-imagem";
     const isDisc = tipo === "discursiva";
     const isVf = tipo === "verdadeiro_falso";
     const isRel = tipo === "relacionar";
@@ -2712,6 +2790,7 @@
           <option value="discursiva" ${tipo === "discursiva" ? "selected" : ""}>Discursiva</option>
           <option value="verdadeiro_falso" ${tipo === "verdadeiro_falso" ? "selected" : ""}>Verdadeiro / falso</option>
           <option value="relacionar" ${tipo === "relacionar" ? "selected" : ""}>Relacionar (duas colunas)</option>
+          <option value="texto-imagem" ${tipo === "texto-imagem" ? "selected" : ""}>Texto / imagem</option>
         </select>
       </div>
       <div class="col-md-4 ${isDisc ? "" : "d-none"}" data-panel="linhas">
@@ -2749,7 +2828,7 @@
       ${combsHtml}
       <button type="button" class="btn btn-sm btn-outline-light" data-action="add-comb" data-q="${i}">Adicionar alternativa de resposta</button>
     </div>
-    <div class="mb-3 encadeio-toolbar d-flex flex-wrap align-items-center gap-2 w-100">
+    <div class="mb-3 encadeio-toolbar d-flex flex-wrap align-items-center gap-2 w-100 ${isTextoImagem ? "d-none" : ""}">
       <div class="d-flex flex-wrap align-items-center gap-2 flex-grow-1 justify-content-between">
         <label class="small text-pr-muted mb-0 d-flex align-items-center gap-1 text-nowrap">
           <img src="assets/icon/link.svg" width="18" height="18" class="question-header-ico" alt="" aria-hidden="true">
@@ -2763,8 +2842,9 @@
           </select>
         </div>
       </div>
+      <p class="small text-pr-muted mb-0 w-100">Ao gerar várias versões, o grupo alterna entre as encadeadas sem repetir até completar o ciclo.</p>
     </div>
-    <div class="d-flex flex-wrap gap-3">
+    <div class="d-flex flex-wrap gap-3" data-panel="opcoes-row" ${isTextoImagem ? ' style="display:none!important"' : ""}>
       <div class="form-check mb-0">
         <input class="form-check-input" type="checkbox" id="opt_${i}" data-field="eh_opcional" ${q.eh_opcional && !encLocked ? "checked" : ""} ${encLocked ? "disabled" : ""}>
         <label class="form-check-label" for="opt_${i}">Questão opcional</label>
@@ -2772,6 +2852,10 @@
       <div class="form-check mb-0">
         <input class="form-check-input" type="checkbox" id="opt_sozinha_${i}" data-field="apenas_renderizar_sozinha" ${q.apenas_renderizar_sozinha ? "checked" : ""}>
         <label class="form-check-label" for="opt_sozinha_${i}">Apenas renderizar sozinha</label>
+      </div>
+      <div class="form-check mb-0 ${isDisc ? "" : "d-none"}" data-panel="disc-colunas">
+        <input class="form-check-input" type="checkbox" id="opt_disc_col_${i}" data-field="discursiva_em_colunas" ${q.discursiva_em_colunas ? "checked" : ""}>
+        <label class="form-check-label" for="opt_disc_col_${i}">Renderizar em colunas</label>
       </div>
     </div>
     ${hiddenRespostas ? `<div class="visually-hidden">${hiddenRespostas}</div>` : ""}
@@ -2781,6 +2865,7 @@
 
   function syncPanels(card) {
     const tipo = card.querySelector('[data-field="tipo"]').value;
+    const isTextoImagem = tipo === "texto-imagem";
     const isDisc = tipo === "discursiva";
     const isVf = tipo === "verdadeiro_falso";
     const isRel = tipo === "relacionar";
@@ -2788,13 +2873,19 @@
     const opcoesPanel = card.querySelector('[data-panel="opcoes"]');
     const colDirPanel = card.querySelector('[data-panel="col-dir"]');
     const combPanel = card.querySelector('[data-panel="combinacoes"]');
+    const discColPanel = card.querySelector('[data-panel="disc-colunas"]');
+    const encToolbar = card.querySelector(".encadeio-toolbar");
+    const optRow = card.querySelector('[data-panel="opcoes-row"]');
     if (linhasPanel) linhasPanel.classList.toggle("d-none", !isDisc);
-    if (opcoesPanel) opcoesPanel.classList.toggle("d-none", isDisc);
+    if (opcoesPanel) opcoesPanel.classList.toggle("d-none", isDisc || isTextoImagem);
     if (colDirPanel) colDirPanel.classList.toggle("d-none", !isRel);
     if (combPanel) combPanel.classList.toggle("d-none", !isVf && !isRel);
+    if (discColPanel) discColPanel.classList.toggle("d-none", !isDisc);
+    if (encToolbar) encToolbar.classList.toggle("d-none", isTextoImagem);
+    if (optRow) optRow.classList.toggle("d-none", isTextoImagem);
     const gerarBtn = card.querySelector('[data-action="ai-gerar-opcoes"]');
     if (gerarBtn) {
-      gerarBtn.classList.toggle("d-none", isDisc || !aiOnline);
+      gerarBtn.classList.toggle("d-none", isDisc || isTextoImagem || !aiOnline);
     }
   }
 
@@ -3272,7 +3363,11 @@
       const h = v.hash != null ? String(v.hash).trim().toLowerCase() : "";
       const s = v.seed != null ? String(v.seed).trim() : "";
       if (/^[0-9a-f]{12}$/.test(h) && s) {
-        m[nk] = { hash: h, seed: s };
+        const orderIds = Array.isArray(v.orderIds) ? v.orderIds.map(String) : null;
+        const selectedOptionalIds = Array.isArray(v.selectedOptionalIds)
+          ? v.selectedOptionalIds.map(String)
+          : null;
+        m[nk] = { hash: h, seed: s, orderIds, selectedOptionalIds };
       }
     }
     if (Object.keys(m).length > 0) {
@@ -3284,8 +3379,13 @@
   function buildCorrigirGabaritoBloco(plan) {
     const objetivas = [];
     const discursivas = [];
-    plan.orderedQuestions.forEach((q, i) => {
-      const num = i + 1;
+    let examNum = 0;
+    plan.orderedQuestions.forEach((q) => {
+      if (q.tipo === "texto-imagem") {
+        return;
+      }
+      examNum += 1;
+      const num = examNum;
       if (q.tipo === "discursiva") {
         discursivas.push({
           num,
@@ -3445,8 +3545,21 @@
       let computed;
       let errMsg = "";
       try {
-        const rng = ep.mulberry32(ep.seedStringToUint32(pair.seed));
-        plan = ep.drawExamPlan(buildQuestionsForExamPlanEngine(state.questions), rng);
+        const engineQs = buildQuestionsForExamPlanEngine(state.questions);
+        if (pair.orderIds && pair.orderIds.length > 0 && typeof ep.planFromStoredOrder === "function") {
+          plan = ep.planFromStoredOrder(
+            engineQs,
+            pair.orderIds,
+            pair.selectedOptionalIds || []
+          );
+        } else {
+          const randomizar =
+            state.correcaoEmbedded &&
+            state.correcaoEmbedded.lastRun &&
+            state.correcaoEmbedded.lastRun.randomizar_ordem !== false;
+          const rng = ep.mulberry32(ep.seedStringToUint32(pair.seed));
+          plan = ep.drawExamPlan(engineQs, rng, { randomizarOrdem: randomizar });
+        }
         computed = await ep.buildGenerationHashAsync({
           orderIds: plan.orderIds,
           selectedOptionalIds: plan.selectedOptionalIds

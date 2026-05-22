@@ -42,6 +42,10 @@
     return picked.map((i) => arr[i]);
   }
 
+  function isScorableQuestion(q) {
+    return q && q.tipo !== "texto-imagem";
+  }
+
   function normalizeWeights(questions) {
     const n = questions.length;
     if (n === 0) {
@@ -105,13 +109,13 @@
     return `Q${parseInt(m[1], 10)}`;
   }
 
-  function filterPoolAfterEncadeamento(allQuestions, rng) {
-    const ids = new Set(allQuestions.map((q) => q.id));
+  function buildEncadeamentoAdjacency(questions) {
+    const ids = new Set(questions.map((q) => q.id));
     const adj = new Map();
-    for (const q of allQuestions) {
+    for (const q of questions) {
       adj.set(q.id, []);
     }
-    for (const q of allQuestions) {
+    for (const q of questions) {
       const target = normalizeEncadeiaRef(q.encadeia_com);
       if (!target || target === q.id || !ids.has(target)) {
         continue;
@@ -119,8 +123,76 @@
       adj.get(q.id).push(target);
       adj.get(target).push(q.id);
     }
+    return adj;
+  }
+
+  function componentKey(compIds) {
+    return compIds
+      .slice()
+      .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+      .join("|");
+  }
+
+  class EncadeamentoBatchCycler {
+    constructor(allQuestions) {
+      this.queues = new Map();
+      this.lastPick = new Map();
+      const adj = buildEncadeamentoAdjacency(allQuestions);
+      const visited = new Set();
+      for (const q of allQuestions) {
+        if (visited.has(q.id)) {
+          continue;
+        }
+        const stack = [q.id];
+        const compIds = [];
+        visited.add(q.id);
+        while (stack.length) {
+          const id = stack.pop();
+          compIds.push(id);
+          const nbs = adj.get(id) || [];
+          for (let ni = 0; ni < nbs.length; ni += 1) {
+            const nb = nbs[ni];
+            if (!visited.has(nb)) {
+              visited.add(nb);
+              stack.push(nb);
+            }
+          }
+        }
+        if (compIds.length >= 2) {
+          const key = componentKey(compIds);
+          this.queues.set(key, []);
+          this.lastPick.set(key, null);
+        }
+      }
+    }
+
+    _refillQueue(key, compIds, rng) {
+      const order = compIds.slice();
+      shuffleInPlace(order, rng);
+      this.queues.set(key, order);
+    }
+
+    pickForComponent(compIds, rng) {
+      const key = componentKey(compIds);
+      let queue = this.queues.get(key);
+      if (!queue) {
+        return compIds[Math.floor(rng() * compIds.length)];
+      }
+      if (queue.length === 0) {
+        this._refillQueue(key, compIds, rng);
+        queue = this.queues.get(key);
+      }
+      const picked = queue.shift();
+      this.lastPick.set(key, picked);
+      return picked;
+    }
+  }
+
+  function filterPoolAfterEncadeamento(allQuestions, rng, encadeamentoCycler) {
+    const adj = buildEncadeamentoAdjacency(allQuestions);
     const excluded = new Set();
     const visited = new Set();
+    const encadeamentoEscolhas = {};
     for (const q of allQuestions) {
       if (visited.has(q.id)) {
         continue;
@@ -141,7 +213,13 @@
         }
       }
       if (compIds.length >= 2) {
-        const keep = compIds[Math.floor(rng() * compIds.length)];
+        const cycler = encadeamentoCycler || null;
+        const keep = cycler
+          ? cycler.pickForComponent(compIds, rng)
+          : compIds[Math.floor(rng() * compIds.length)];
+        if (cycler) {
+          encadeamentoEscolhas[componentKey(compIds)] = keep;
+        }
         for (let ci = 0; ci < compIds.length; ci += 1) {
           const cid = compIds[ci];
           if (cid !== keep) {
@@ -150,11 +228,29 @@
         }
       }
     }
-    return allQuestions.filter((x) => !excluded.has(x.id));
+    return {
+      pool: allQuestions.filter((x) => !excluded.has(x.id)),
+      encadeamentoEscolhas
+    };
   }
 
-  function drawExamPlan(allQuestions, rng) {
-    const pool = filterPoolAfterEncadeamento(allQuestions, rng);
+  function sortByOrdemFonte(items) {
+    return items.slice().sort((a, b) => {
+      const oa = a.ordem_fonte != null ? a.ordem_fonte : 0;
+      const ob = b.ordem_fonte != null ? b.ordem_fonte : 0;
+      return oa - ob;
+    });
+  }
+
+  function drawExamPlan(allQuestions, rng, options) {
+    const opts = options || {};
+    const randomizarOrdem = opts.randomizarOrdem !== false;
+    const encadeamentoCycler = opts.encadeamentoCycler || null;
+    const { pool, encadeamentoEscolhas } = filterPoolAfterEncadeamento(
+      allQuestions,
+      rng,
+      encadeamentoCycler
+    );
     const mandatory = pool.filter((q) => !q.eh_opcional);
     const optional = pool.filter((q) => q.eh_opcional);
     const K = Math.ceil(optional.length / 2);
@@ -162,16 +258,57 @@
     const selectedOptionalIds = selected
       .map((q) => q.id)
       .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-    const merged = mandatory.concat(selected);
-    shuffleInPlace(merged, rng);
+    let merged = mandatory.concat(selected);
+    if (randomizarOrdem) {
+      shuffleInPlace(merged, rng);
+    } else {
+      merged = sortByOrdemFonte(merged);
+    }
     const orderIds = merged.map((q) => q.id);
-    const r = normalizeWeights(merged);
+    const scorable = merged.filter(isScorableQuestion);
+    const scorableIndices = merged
+      .map((q, i) => (isScorableQuestion(q) ? i : -1))
+      .filter((i) => i >= 0);
+    const r = normalizeWeights(scorable);
+    const weightsResolved = merged.map((q, i) => {
+      if (!isScorableQuestion(q)) {
+        return 0;
+      }
+      const idx = scorableIndices.indexOf(i);
+      return r.weights[idx] != null ? r.weights[idx] : 0;
+    });
     return {
       orderIds,
       selectedOptionalIds,
       orderedQuestions: merged,
-      weightsResolved: r.weights,
-      warnings: r.warnings
+      weightsResolved,
+      warnings: r.warnings,
+      encadeamentoEscolhas
+    };
+  }
+
+  function planFromStoredOrder(allQuestions, orderIds, selectedOptionalIds) {
+    const byId = new Map(allQuestions.map((q) => [q.id, q]));
+    const orderedQuestions = orderIds.map((id) => byId.get(id)).filter(Boolean);
+    const scorable = orderedQuestions.filter(isScorableQuestion);
+    const scorableIndices = orderedQuestions
+      .map((q, i) => (isScorableQuestion(q) ? i : -1))
+      .filter((i) => i >= 0);
+    const r = normalizeWeights(scorable);
+    const weightsResolved = orderedQuestions.map((q, i) => {
+      if (!isScorableQuestion(q)) {
+        return 0;
+      }
+      const idx = scorableIndices.indexOf(i);
+      return r.weights[idx] != null ? r.weights[idx] : 0;
+    });
+    return {
+      orderIds,
+      selectedOptionalIds: selectedOptionalIds || [],
+      orderedQuestions,
+      weightsResolved,
+      warnings: r.warnings,
+      encadeamentoEscolhas: {}
     };
   }
 
@@ -207,6 +344,8 @@
     sampleK,
     normalizeWeights,
     drawExamPlan,
+    planFromStoredOrder,
+    EncadeamentoBatchCycler,
     buildGenerationHashAsync
   };
 })();
