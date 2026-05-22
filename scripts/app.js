@@ -3007,7 +3007,7 @@
       </div>
       <div class="form-check mb-0 ${isDisc ? "" : "d-none"}" data-panel="disc-colunas">
         <input class="form-check-input" type="checkbox" id="opt_disc_col_${i}" data-field="discursiva_em_colunas" ${q.discursiva_em_colunas ? "checked" : ""}>
-        <label class="form-check-label" for="opt_disc_col_${i}">Partir o texto em dois</label>
+        <label class="form-check-label" for="opt_disc_col_${i}" title="Divide a área de resposta (R:) em duas colunas com espaço ao centro, na mesma questão">Partir o texto em dois</label>
       </div>
     </div>
     ${hiddenRespostas ? `<div class="visually-hidden">${hiddenRespostas}</div>` : ""}
