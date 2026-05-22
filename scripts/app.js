@@ -2024,11 +2024,10 @@
       if (!hasText && !hasFoto) {
         errors.push(`${id}: texto/imagem exige enunciado ou imagem.`);
       }
-      return errors;
-    }
-    if (!q.pergunta || !String(q.pergunta).trim()) {
+    } else if (!q.pergunta || !String(q.pergunta).trim()) {
       errors.push(`${id}: campo pergunta é obrigatório.`);
     }
+    if (tipo !== "texto-imagem") {
     let opcoes = q.opcoes ? q.opcoes.map((s) => String(s).trim()).filter(Boolean) : [];
     let linhas = q.linhas;
     if (tipo === "discursiva") {
@@ -2073,19 +2072,29 @@
     } catch {
       errors.push(`${id}: peso inválido (esperado 0,0 a 10,0 ou vazio).`);
     }
+    }
     if (q.encadeia_com_stable_key) {
       const j = state.questions.findIndex((x) => x.stableKey === q.encadeia_com_stable_key);
       if (j < 0) {
         errors.push(`${id}: encadeamento aponta para questão inexistente.`);
       } else if (j === index) {
         errors.push(`${id}: encadeamento inválido.`);
-      } else if (normalizeTipo(state.questions[j].tipo) === "texto-imagem") {
-        errors.push(
-          `${id}: encadeamento não pode apontar para bloco Texto/imagem (Q${j + 1}). Encadeie só variantes de questão (discursiva, etc.).`
-        );
+      } else {
+        const myKind = normalizeTipo(q.tipo) === "texto-imagem" ? "texto-imagem" : "questao";
+        const targetKind =
+          normalizeTipo(state.questions[j].tipo) === "texto-imagem" ? "texto-imagem" : "questao";
+        if (myKind !== targetKind) {
+          errors.push(
+            `${id}: encadeamento só entre itens do mesmo tipo (Texto/imagem com Texto/imagem, ou questão avaliável com questão avaliável).`
+          );
+        }
       }
     }
     return errors;
+  }
+
+  function encadeamentoKindOfQuestion(q) {
+    return normalizeTipo(q.tipo) === "texto-imagem" ? "texto-imagem" : "questao";
   }
 
   function validateEncadeamentoConnectivity(questions) {
@@ -2097,16 +2106,16 @@
       adj.set(q.id, []);
     }
     for (const q of engine) {
-      if (q.tipo === "texto-imagem") {
-        continue;
-      }
       const m = q.encadeia_com ? /^Q\s*(\d+)$/i.exec(String(q.encadeia_com).trim()) : null;
       if (!m) {
         continue;
       }
       const target = `Q${parseInt(m[1], 10)}`;
       const targetQ = byId.get(target);
-      if (!targetQ || targetQ.tipo === "texto-imagem" || target === q.id) {
+      if (!targetQ || target === q.id) {
+        continue;
+      }
+      if (encadeamentoKindOfQuestion(q) !== encadeamentoKindOfQuestion(targetQ)) {
         continue;
       }
       adj.get(q.id).push(target);
@@ -2114,7 +2123,7 @@
     }
     const visited = new Set();
     for (const q of engine) {
-      if (q.tipo === "texto-imagem" || visited.has(q.id)) {
+      if (visited.has(q.id)) {
         continue;
       }
       const stack = [q.id];
@@ -2138,8 +2147,12 @@
         return qq && !qq.encadeia_com;
       });
       if (roots.length > 1) {
+        const kindLabel =
+          byId.get(comp[0]) && byId.get(comp[0]).tipo === "texto-imagem"
+            ? "Texto/imagem"
+            : "questões avaliáveis";
         errors.push(
-          `Encadeamento: ${comp.join(", ")} formam um grupo, mas há mais de uma variante sem «Encadeada com…» (${roots.join(", ")}). Ligue as três em cadeia (ex.: Q4→Q3 e Q5→Q4).`
+          `Encadeamento (${kindLabel}): ${comp.join(", ")} formam um grupo, mas há mais de uma variante sem «Encadeada com…» (${roots.join(", ")}). Ligue as variantes em cadeia (ex.: Q4→Q3 e Q5→Q4).`
         );
       }
     }
@@ -2875,10 +2888,12 @@
         : "";
     const encLocked = questionEncadeioLocked(state.questions, i);
     const encSelVal = q.encadeia_com_stable_key || "";
+    const encKind = normalizeTipo(q.tipo) === "texto-imagem" ? "texto-imagem" : "questao";
     const encOptsHtml = state.questions
       .map((oq, j) => {
         if (j === i) return "";
-        if (normalizeTipo(oq.tipo) === "texto-imagem") return "";
+        const oqKind = normalizeTipo(oq.tipo) === "texto-imagem" ? "texto-imagem" : "questao";
+        if (oqKind !== encKind) return "";
         const sn = truncatePlaceholder(oq.pergunta || "", 42);
         const sel = oq.stableKey === q.encadeia_com_stable_key ? " selected" : "";
         return `<option value="${escapeAttr(oq.stableKey)}"${sel}>Q${j + 1}: ${escapeHtml(sn)}</option>`;
