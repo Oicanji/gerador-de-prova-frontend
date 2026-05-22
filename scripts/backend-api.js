@@ -1,6 +1,7 @@
 (function () {
   const STORAGE_URL_KEY = "ifsc-editor-pr-backend-url";
   const DEFAULT_BASE_URL = "https://gerador-de-prova-backend.onrender.com";
+  const DEFAULT_DIRECT_URL = "https://gerador-de-prova-backend.onrender.com";
   const HEALTH_POLL_MS = 15000;
   const JOB_POLL_MS = 5000;
   const MAX_QUANTIDADE = 30;
@@ -34,6 +35,18 @@
     return DEFAULT_BASE_URL;
   }
 
+  function getDirectBackendUrl() {
+    const fromCfg = cfg.BACKEND_DIRECT_URL;
+    if (fromCfg && String(fromCfg).trim()) {
+      return String(fromCfg).trim().replace(/\/$/, "");
+    }
+    const api = getBaseUrl();
+    if (/workers\.dev$/i.test(api) || /workers\.dev\//i.test(api)) {
+      return DEFAULT_DIRECT_URL;
+    }
+    return api;
+  }
+
   function notifyStatus(next) {
     online = next;
     statusListeners.forEach((fn) => {
@@ -53,6 +66,13 @@
   }
 
   async function parseErrorBody(res) {
+    if (res.status === 524) {
+      return (
+        "Timeout Cloudflare (524) ao contactar a API. O Worker costuma falhar no download do ZIP. " +
+        "Em scripts/config.js defina BACKEND_DIRECT_URL para https://gerador-de-prova-backend.onrender.com " +
+        "(o editor ja usa essa URL automaticamente no download quando a API passa pelo Worker)."
+      );
+    }
     try {
       const data = await res.json();
       if (data && data.error) return String(data.error);
@@ -172,8 +192,9 @@
   }
 
   async function downloadResult(jobId) {
+    const directUrl = getDirectBackendUrl();
     const res = await fetch(
-      `${getBaseUrl()}/api/v1/jobs/${encodeURIComponent(jobId)}/result`,
+      `${directUrl}/api/v1/jobs/${encodeURIComponent(jobId)}/result`,
       {
         method: "GET",
         headers: authHeaders(),
@@ -239,6 +260,7 @@
 
   globalThis.editorBackendApi = {
     getBaseUrl,
+    getDirectBackendUrl,
     isOnline: () => online,
     getHealthDetail,
     checkHealth,
