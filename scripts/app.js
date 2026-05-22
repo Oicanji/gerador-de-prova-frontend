@@ -332,11 +332,23 @@
     return meta;
   }
 
+  function blockFirstLineKeyImport(block) {
+    const line = String(block || "")
+      .split(/\r?\n/)
+      .find((l) => l.trim() !== "");
+    if (!line) {
+      return null;
+    }
+    const m = line.match(/^([\w_]+)\s*:/);
+    return m ? m[1].toLowerCase() : null;
+  }
+
   function isPrBlockImport(block) {
+    const t = String(block || "").trim();
     return (
-      /^\s*pergunta\s*:/im.test(block) ||
-      /^\s*tipo\s*:\s*texto/im.test(block) ||
-      /^\s*tipo\s*:\s*bloco/im.test(block)
+      /^\s*pergunta\s*:/im.test(t) ||
+      /^\s*tipo\s*:/im.test(t) ||
+      /^\s*foto_enunciado\s*:/im.test(t)
     );
   }
 
@@ -539,6 +551,21 @@
     };
   }
 
+  const PR_CONTINUATION_FIELDS = new Set([
+    "opcoes",
+    "combinacoes",
+    "coluna_direita",
+    "direita",
+    "linhas",
+    "resposta",
+    "eh_opcional",
+    "apenas_renderizar_sozinha",
+    "discursiva_em_colunas",
+    "peso",
+    "foto_enunciado",
+    "encadeia_com"
+  ]);
+
   function mergePrQuestionContinuationBlocks(blocks) {
     const merged = [];
     for (const block of blocks) {
@@ -546,11 +573,11 @@
       if (!t) {
         continue;
       }
-      const hasPergunta = /^\s*pergunta\s*:/im.test(t);
-      const startsWithContinuation = /^\s*(tipo|opcoes|combinacoes|coluna_direita|direita|linhas|resposta|eh_opcional|apenas_renderizar_sozinha|discursiva_em_colunas|peso|foto_enunciado|encadeia_com)\s*:/im.test(
-        t
-      );
-      if (merged.length > 0 && !hasPergunta && startsWithContinuation) {
+      const firstKey = blockFirstLineKeyImport(t);
+      const mergeIntoPrevious =
+        merged.length > 0 &&
+        (firstKey === null || (firstKey && PR_CONTINUATION_FIELDS.has(firstKey)));
+      if (mergeIntoPrevious) {
         merged[merged.length - 1] = `${merged[merged.length - 1]}\n\n${t}`;
       } else {
         merged.push(t);
@@ -607,7 +634,7 @@
       const text = questionBlocks[i];
       if (!isPrBlockImport(text)) {
         throw new Error(
-          `Bloco ${i + 1} não está no formato PR (esperado linha começando com "pergunta:").`
+          `Bloco ${i + 1} não está no formato PR (esperado "pergunta:", "tipo:" ou "foto_enunciado:").`
         );
       }
       parsed.push(parsePrBlockToQuestionImport(text, i));
@@ -2419,10 +2446,10 @@
     if (perguntaLines[0] != null && String(perguntaLines[0]).length > 0) {
       lines.push(`pergunta: ${perguntaLines[0]}`);
       for (let i = 1; i < perguntaLines.length; i++) {
-        lines.push(perguntaLines[i]);
+        lines.push(perguntaLines[i] === "" ? " " : perguntaLines[i]);
       }
-    } else if (tipo !== "texto-imagem") {
-      lines.push("pergunta: ");
+    } else {
+      lines.push("pergunta:");
     }
     const fotoBasename = exportFotoBasenameForZip(q, questionIndex);
     if (fotoBasename) {
