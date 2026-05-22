@@ -1,10 +1,12 @@
 (function () {
   const STORAGE_URL_KEY = "ifsc-editor-pr-backend-url";
-  const DEFAULT_BASE_URL = "https://gerador-de-prova-backend.onrender.com";
-  const DEFAULT_DIRECT_URL = "https://gerador-de-prova-backend.onrender.com";
+  const DEFAULT_BASE_URL = "https://gerador-prova-api.oicanji.workers.dev";
+  const CHUNK_SIZE = 5 * 1024 * 1024;
   const HEALTH_POLL_MS = 15000;
   const JOB_POLL_MS = 5000;
   const MAX_QUANTIDADE = 30;
+  const FETCH_RETRY_MAX = 4;
+  const FETCH_RETRY_MS = 2500;
 
   const cfg =
     typeof globalThis.EDITOR_BACKEND_CONFIG === "object" && globalThis.EDITOR_BACKEND_CONFIG
@@ -35,18 +37,6 @@
     return DEFAULT_BASE_URL;
   }
 
-  function getDirectBackendUrl() {
-    const fromCfg = cfg.BACKEND_DIRECT_URL;
-    if (fromCfg && String(fromCfg).trim()) {
-      return String(fromCfg).trim().replace(/\/$/, "");
-    }
-    const api = getBaseUrl();
-    if (/workers\.dev$/i.test(api) || /workers\.dev\//i.test(api)) {
-      return DEFAULT_DIRECT_URL;
-    }
-    return api;
-  }
-
   function notifyStatus(next) {
     online = next;
     statusListeners.forEach((fn) => {
@@ -65,12 +55,41 @@
     return headers;
   }
 
+  function isRetryableStatus(status) {
+    return status === 524 || status === 502 || status === 503 || status === 504;
+  }
+
+  async function fetchWithRetry(url, init, label) {
+    let lastErr = null;
+    for (let attempt = 0; attempt < FETCH_RETRY_MAX; attempt += 1) {
+      try {
+        const res = await fetch(url, init);
+        if (isRetryableStatus(res.status) && attempt < FETCH_RETRY_MAX - 1) {
+          await new Promise((r) => setTimeout(r, FETCH_RETRY_MS * (attempt + 1)));
+          continue;
+        }
+        return res;
+      } catch (err) {
+        lastErr = err;
+        if (attempt < FETCH_RETRY_MAX - 1) {
+          await new Promise((r) => setTimeout(r, FETCH_RETRY_MS * (attempt + 1)));
+          continue;
+        }
+      }
+    }
+    if (lastErr) {
+      throw new Error(
+        `${label || "Requisicao"} falhou: ${lastErr.message || lastErr}. Servidor pode estar iniciando.`
+      );
+    }
+    throw new Error(`${label || "Requisicao"} falhou apos varias tentativas.`);
+  }
+
   async function parseErrorBody(res) {
     if (res.status === 524) {
       return (
-        "Timeout Cloudflare (524) ao contactar a API. O Worker costuma falhar no download do ZIP. " +
-        "Em scripts/config.js defina BACKEND_DIRECT_URL para https://gerador-de-prova-backend.onrender.com " +
-        "(o editor ja usa essa URL automaticamente no download quando a API passa pelo Worker)."
+        "Timeout Cloudflare (524). Tente de novo em instantes; o servidor no Render pode estar acordando. " +
+        "O editor envia o .pr e baixa o PDF em pedacos de ate 5 MB pelo Worker."
       );
     }
     try {
@@ -83,14 +102,15 @@
   async function checkHealth() {
     healthDetail = { issue: null, hint: null };
     try {
-      const res = await fetch(`${getBaseUrl()}/health`, {
-        method: "GET",
-        cache: "no-store",
-      });
+      const res = await fetchWithRetry(
+        `${getBaseUrl()}/health`,
+        { method: "GET", cache: "no-store" },
+        "Health"
+      );
       if (!res.ok) {
         healthDetail = {
           issue: "server",
-          hint: "O servidor respondeu com erro. Pode estar iniciando no OnRender.",
+          hint: "O servidor respondeu com erro. Pode estar iniciando no Render.",
         };
         notifyStatus(false);
         return false;
@@ -105,11 +125,9 @@
       notifyStatus(isOnline);
       return isOnline;
     } catch (err) {
-      const msg = err && err.message ? String(err.message) : "";
       healthDetail = {
         issue: "network",
-        hint:
-          "Provámente o servidor está dormindo. Tente novamente em alguns minutos.",
+        hint: "Provavelmente o servidor esta dormindo. Tente novamente em alguns minutos.",
       };
       notifyStatus(false);
       return false;
@@ -135,38 +153,79 @@
     return { ...healthDetail };
   }
 
+  function jobApi(path) {
+    return `${getBaseUrl()}/api/v1${path}`;
+  }
+
+  async function createJobChunkedUpload(prBlob, filename, quantidade, randomizar, gerarGabarito) {
+    const prSize = prBlob.size;
+    const sessionRes = await fetchWithRetry(
+      jobApi("/jobs/session"),
+      {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({
+          filename: filename || "fonte.pr",
+          prSize,
+          quantidade,
+          randomizar: randomizar !== false ? "sim" : "nao",
+          gerar_gabarito: gerarGabarito !== false ? "sim" : "nao",
+        }),
+      },
+      "Criar sessao de upload"
+    );
+    if (!sessionRes.ok) {
+      throw new Error(await parseErrorBody(sessionRes));
+    }
+    const session = await sessionRes.json();
+    if (!session || !session.jobId) {
+      throw new Error("Resposta invalida ao criar sessao de upload.");
+    }
+    const chunkSize = session.chunkSize || CHUNK_SIZE;
+    const totalChunks = session.uploadChunks || Math.ceil(prSize / chunkSize);
+    for (let i = 0; i < totalChunks; i += 1) {
+      const start = i * chunkSize;
+      const end = Math.min(prSize, start + chunkSize);
+      const slice = prBlob.slice(start, end);
+      const putRes = await fetchWithRetry(
+        jobApi(`/jobs/${encodeURIComponent(session.jobId)}/upload/${i}`),
+        {
+          method: "PUT",
+          headers: authHeaders({ "Content-Type": "application/octet-stream" }),
+          body: slice,
+        },
+        `Upload chunk ${i + 1}/${totalChunks}`
+      );
+      if (!putRes.ok) {
+        throw new Error(await parseErrorBody(putRes));
+      }
+    }
+    const finishRes = await fetchWithRetry(
+      jobApi(`/jobs/${encodeURIComponent(session.jobId)}/upload/finish`),
+      { method: "POST", headers: authHeaders() },
+      "Finalizar upload"
+    );
+    if (!finishRes.ok) {
+      throw new Error(await parseErrorBody(finishRes));
+    }
+    return { jobId: session.jobId, quantidade: session.quantidade || quantidade };
+  }
+
   async function createJob(prBlob, filename, quantidade, randomizar, gerarGabarito) {
     const key = getApiKey();
     if (!key) {
       throw new Error("Chave API nao configurada em scripts/config.js");
     }
     const q = Math.max(1, Math.min(MAX_QUANTIDADE, parseInt(String(quantidade), 10) || 1));
-    const form = new FormData();
-    form.append("file", prBlob, filename || "fonte.pr");
-    form.append("quantidade", String(q));
-    form.append("randomizar", randomizar !== false ? "sim" : "nao");
-    form.append("gerar_gabarito", gerarGabarito !== false ? "sim" : "nao");
-    const res = await fetch(`${getBaseUrl()}/api/v1/jobs`, {
-      method: "POST",
-      headers: authHeaders(),
-      body: form,
-    });
-    if (!res.ok) {
-      throw new Error(await parseErrorBody(res));
-    }
-    const data = await res.json();
-    if (!data || !data.jobId) {
-      throw new Error("Resposta invalida ao criar o job.");
-    }
-    return { jobId: data.jobId, quantidade: data.quantidade || q };
+    return createJobChunkedUpload(prBlob, filename, q, randomizar, gerarGabarito);
   }
 
   async function getJobStatus(jobId) {
-    const res = await fetch(`${getBaseUrl()}/api/v1/jobs/${encodeURIComponent(jobId)}`, {
-      method: "GET",
-      headers: authHeaders(),
-      cache: "no-store",
-    });
+    const res = await fetchWithRetry(
+      jobApi(`/jobs/${encodeURIComponent(jobId)}`),
+      { method: "GET", headers: authHeaders(), cache: "no-store" },
+      "Status do job"
+    );
     if (!res.ok) {
       throw new Error(await parseErrorBody(res));
     }
@@ -191,46 +250,67 @@
     }
   }
 
-  async function downloadResult(jobId) {
-    const directUrl = getDirectBackendUrl();
-    const res = await fetch(
-      `${directUrl}/api/v1/jobs/${encodeURIComponent(jobId)}/result`,
-      {
-        method: "GET",
-        headers: authHeaders(),
+  function concatChunks(chunks, totalSize) {
+    const out = new Uint8Array(totalSize);
+    let offset = 0;
+    for (const part of chunks) {
+      out.set(part, offset);
+      offset += part.byteLength;
+    }
+    return out.buffer;
+  }
+
+  async function downloadPartInChunks(jobId, part, meta, onProgress) {
+    const partMeta = meta[part];
+    if (!partMeta || !partMeta.totalChunks) {
+      throw new Error(`Metadados ausentes para ${part}.`);
+    }
+    const chunks = [];
+    for (let i = 0; i < partMeta.totalChunks; i += 1) {
+      const res = await fetchWithRetry(
+        jobApi(
+          `/jobs/${encodeURIComponent(jobId)}/result/chunk/${part}/${i}`
+        ),
+        { method: "GET", headers: authHeaders(), cache: "no-store" },
+        `Download ${part} ${i + 1}/${partMeta.totalChunks}`
+      );
+      if (!res.ok) {
+        throw new Error(await parseErrorBody(res));
       }
+      const buf = await res.arrayBuffer();
+      chunks.push(new Uint8Array(buf));
+      if (onProgress) {
+        onProgress({
+          phase: "download",
+          part,
+          current: i + 1,
+          total: partMeta.totalChunks,
+        });
+      }
+    }
+    return concatChunks(chunks, partMeta.size);
+  }
+
+  async function downloadResultChunked(jobId, onProgress) {
+    const infoRes = await fetchWithRetry(
+      jobApi(`/jobs/${encodeURIComponent(jobId)}/result/info`),
+      { method: "GET", headers: authHeaders(), cache: "no-store" },
+      "Info do resultado"
     );
-    if (!res.ok) {
-      throw new Error(await parseErrorBody(res));
+    if (!infoRes.ok) {
+      throw new Error(await parseErrorBody(infoRes));
     }
-    return res.arrayBuffer();
-  }
-
-  function findZipEntry(zip, baseName) {
-    const keys = Object.keys(zip.files).filter((k) => !zip.files[k].dir);
-    const lower = baseName.toLowerCase();
-    return keys.find((k) => {
-      const base = k.split("/").pop();
-      return base && base.toLowerCase() === lower;
-    });
-  }
-
-  async function extractResultZip(arrayBuffer) {
-    if (typeof JSZip === "undefined") {
-      throw new Error("JSZip nao carregou.");
-    }
-    const zip = await JSZip.loadAsync(arrayBuffer);
-    const prKey = findZipEntry(zip, "prova-atualizada.pr");
-    const pdfKey = findZipEntry(zip, "todas-provas.pdf");
-    if (!prKey) {
-      throw new Error("ZIP de resultado sem prova-atualizada.pr");
-    }
-    if (!pdfKey) {
-      throw new Error("ZIP de resultado sem todas-provas.pdf");
-    }
-    const prUpdatedBuffer = await zip.file(prKey).async("arraybuffer");
-    const pdfBytes = await zip.file(pdfKey).async("uint8array");
-    const pdfBlob = new Blob([pdfBytes], { type: "application/pdf" });
+    const meta = await infoRes.json();
+    const prUpdatedBuffer = await downloadPartInChunks(jobId, "pr", meta, onProgress);
+    const pdfBuffer = await downloadPartInChunks(jobId, "pdf", meta, onProgress);
+    try {
+      await fetchWithRetry(
+        jobApi(`/jobs/${encodeURIComponent(jobId)}/result/ack`),
+        { method: "POST", headers: authHeaders() },
+        "Ack resultado"
+      );
+    } catch (_) {}
+    const pdfBlob = new Blob([pdfBuffer], { type: "application/pdf" });
     return { prUpdatedBuffer, pdfBlob };
   }
 
@@ -242,10 +322,10 @@
     gerarGabarito = true,
     onProgress
   }) {
+    await checkHealth();
     const { jobId } = await createJob(prBlob, filename, quantidade, randomizar, gerarGabarito);
     const completed = await waitForJob(jobId, onProgress);
-    const zipBuffer = await downloadResult(jobId);
-    const extracted = await extractResultZip(zipBuffer);
+    const extracted = await downloadResultChunked(jobId, onProgress);
     return {
       ...extracted,
       examCount:
@@ -260,7 +340,6 @@
 
   globalThis.editorBackendApi = {
     getBaseUrl,
-    getDirectBackendUrl,
     isOnline: () => online,
     getHealthDetail,
     checkHealth,

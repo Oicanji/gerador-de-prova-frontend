@@ -1209,6 +1209,8 @@
             btn.title = `Compilando prova ${p.current} de ${p.total}`;
           } else if (p.phase === "merge") {
             btn.title = "Mesclando PDFs";
+          } else if (p.phase === "download") {
+            btn.title = `Baixando ${p.part} (${p.current}/${p.total})`;
           }
         }
       });
