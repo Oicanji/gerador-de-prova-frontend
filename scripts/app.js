@@ -481,9 +481,9 @@
       if (linhas) {
         throw new Error(`${id}: linhas só é permitido para discursiva.`);
       }
-    } else {
+    } else if (tipo === "multipla-escolha") {
       if (!opcoes || opcoes.length < 2) {
-        throw new Error(`${id}: ${tipo} exige pelo menos duas opções (separadas por ;).`);
+        throw new Error(`${id}: multipla-escolha exige pelo menos duas opções (separadas por ;).`);
       }
       if (combinacoes && combinacoes.length > 0) {
         throw new Error(`${id}: multipla-escolha não deve ter combinacoes.`);
@@ -491,6 +491,11 @@
       if (linhas) {
         throw new Error(`${id}: linhas só é permitido para discursiva.`);
       }
+      if (discursiva_em_colunas) {
+        throw new Error(`${id}: discursiva_em_colunas só é permitido para discursiva.`);
+      }
+    } else if (discursiva_em_colunas) {
+      throw new Error(`${id}: discursiva_em_colunas só é permitido para discursiva.`);
     }
     let foto_enunciado = null;
     if (f.foto_enunciado != null && String(f.foto_enunciado).trim() !== "") {
