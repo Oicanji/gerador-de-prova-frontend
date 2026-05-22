@@ -371,6 +371,36 @@
     return fields;
   }
 
+  const PR_EMBEDDED_LINE_IMPORT_RE =
+    /^\s*(encadeia_com|eh_opcional|apenas_renderizar_sozinha|peso|linhas|resposta|opcoes|combinacoes|foto_enunciado|tipo|discursiva_em_colunas|coluna_direita|direita)\s*:/i;
+
+  function repairPrFieldsImport(fields) {
+    if (fields.tipo && /\r?\n/.test(fields.tipo)) {
+      const tipoLines = fields.tipo.split(/\r?\n/);
+      fields.tipo = tipoLines[0].trim();
+      const extra = tipoLines.slice(1).join("\n").trim();
+      if (extra) {
+        fields.pergunta = fields.pergunta ? `${extra}\n${fields.pergunta}` : extra;
+      }
+    }
+    const perguntaLines = [];
+    for (const line of String(fields.pergunta || "").split(/\r?\n/)) {
+      const enc = line.match(/^\s*encadeia_com\s*:\s*(.+)$/i);
+      if (enc) {
+        if (!fields.encadeia_com || String(fields.encadeia_com).trim() === "") {
+          fields.encadeia_com = enc[1].trim();
+        }
+        continue;
+      }
+      if (PR_EMBEDDED_LINE_IMPORT_RE.test(line)) {
+        continue;
+      }
+      perguntaLines.push(line);
+    }
+    fields.pergunta = perguntaLines.join("\n").trim();
+    return fields;
+  }
+
   function parsePesoImport(raw) {
     if (raw === undefined || raw === null || String(raw).trim() === "") {
       return null;
@@ -384,7 +414,7 @@
 
   function parsePrBlockToQuestionImport(block, index) {
     const id = `Q${index + 1}`;
-    const f = parsePrFieldsImport(block);
+    const f = repairPrFieldsImport(parsePrFieldsImport(block));
     const tipo = normalizeTipo(f.tipo);
     if (!tipo || !TIPOS.has(tipo)) {
       throw new Error(
@@ -1867,6 +1897,17 @@
     state.filename = (fn && fn.value.trim()) || "fonte.pr";
   }
 
+  function sanitizePerguntaEnunciado(text) {
+    const lines = [];
+    for (const line of String(text || "").split(/\r?\n/)) {
+      if (/^\s*encadeia_com\s*:/i.test(line)) {
+        continue;
+      }
+      lines.push(line);
+    }
+    return lines.join("\n");
+  }
+
   function readQuestionsFromDom() {
     const cards = document.querySelectorAll("[data-question-index]");
     const prevBy = new Map(state.questions.map((pq) => [pq.stableKey, pq]));
@@ -1879,7 +1920,9 @@
         q.stableKey = pq.stableKey;
       }
       q.id = `Q${idx + 1}`;
-      q.pergunta = card.querySelector(`[data-field="pergunta"]`)?.value ?? "";
+      q.pergunta = sanitizePerguntaEnunciado(
+        card.querySelector(`[data-field="pergunta"]`)?.value ?? ""
+      );
       q.tipo = card.querySelector(`[data-field="tipo"]`)?.value ?? "multipla-escolha";
       const tipoNormEarly = normalizeTipo(q.tipo);
       if (tipoNormEarly === "multipla-escolha") {
@@ -2036,6 +2079,68 @@
         errors.push(`${id}: encadeamento aponta para questão inexistente.`);
       } else if (j === index) {
         errors.push(`${id}: encadeamento inválido.`);
+      } else if (normalizeTipo(state.questions[j].tipo) === "texto-imagem") {
+        errors.push(
+          `${id}: encadeamento não pode apontar para bloco Texto/imagem (Q${j + 1}). Encadeie só variantes de questão (discursiva, etc.).`
+        );
+      }
+    }
+    return errors;
+  }
+
+  function validateEncadeamentoConnectivity(questions) {
+    const errors = [];
+    const engine = buildQuestionsForExamPlanEngine(questions);
+    const byId = new Map(engine.map((q) => [q.id, q]));
+    const adj = new Map();
+    for (const q of engine) {
+      adj.set(q.id, []);
+    }
+    for (const q of engine) {
+      if (q.tipo === "texto-imagem") {
+        continue;
+      }
+      const m = q.encadeia_com ? /^Q\s*(\d+)$/i.exec(String(q.encadeia_com).trim()) : null;
+      if (!m) {
+        continue;
+      }
+      const target = `Q${parseInt(m[1], 10)}`;
+      const targetQ = byId.get(target);
+      if (!targetQ || targetQ.tipo === "texto-imagem" || target === q.id) {
+        continue;
+      }
+      adj.get(q.id).push(target);
+      adj.get(target).push(q.id);
+    }
+    const visited = new Set();
+    for (const q of engine) {
+      if (q.tipo === "texto-imagem" || visited.has(q.id)) {
+        continue;
+      }
+      const stack = [q.id];
+      const comp = [];
+      visited.add(q.id);
+      while (stack.length) {
+        const id = stack.pop();
+        comp.push(id);
+        for (const nb of adj.get(id) || []) {
+          if (!visited.has(nb)) {
+            visited.add(nb);
+            stack.push(nb);
+          }
+        }
+      }
+      if (comp.length < 2) {
+        continue;
+      }
+      const roots = comp.filter((cid) => {
+        const qq = byId.get(cid);
+        return qq && !qq.encadeia_com;
+      });
+      if (roots.length > 1) {
+        errors.push(
+          `Encadeamento: ${comp.join(", ")} formam um grupo, mas há mais de uma variante sem «Encadeada com…» (${roots.join(", ")}). Ligue as três em cadeia (ex.: Q4→Q3 e Q5→Q4).`
+        );
       }
     }
     return errors;
@@ -2048,6 +2153,7 @@
     state.questions.forEach((q, i) => {
       errors.push(...validateQuestion(q, i));
     });
+    errors.push(...validateEncadeamentoConnectivity(state.questions));
     return errors;
   }
 
@@ -2441,7 +2547,6 @@
   function serializeQuestionBlock(q, questionIndex) {
     const tipo = normalizeTipo(q.tipo) || "multipla-escolha";
     const lines = [];
-    lines.push(`tipo: ${tipo}`);
     const perguntaLines = String(q.pergunta || "").split(/\r?\n/);
     if (perguntaLines[0] != null && String(perguntaLines[0]).length > 0) {
       lines.push(`pergunta: ${perguntaLines[0]}`);
@@ -2451,6 +2556,7 @@
     } else {
       lines.push("pergunta:");
     }
+    lines.push(`tipo: ${tipo}`);
     const fotoBasename = exportFotoBasenameForZip(q, questionIndex);
     if (fotoBasename) {
       lines.push(`foto_enunciado: ${fotoBasename}`);
@@ -2772,6 +2878,7 @@
     const encOptsHtml = state.questions
       .map((oq, j) => {
         if (j === i) return "";
+        if (normalizeTipo(oq.tipo) === "texto-imagem") return "";
         const sn = truncatePlaceholder(oq.pergunta || "", 42);
         const sel = oq.stableKey === q.encadeia_com_stable_key ? " selected" : "";
         return `<option value="${escapeAttr(oq.stableKey)}"${sel}>Q${j + 1}: ${escapeHtml(sn)}</option>`;

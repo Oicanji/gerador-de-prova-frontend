@@ -46,6 +46,10 @@
     return q && q.tipo !== "texto-imagem";
   }
 
+  function isEncadeavelQuestion(q) {
+    return q && q.tipo !== "texto-imagem";
+  }
+
   function normalizeWeights(questions) {
     const n = questions.length;
     if (n === 0) {
@@ -110,14 +114,25 @@
   }
 
   function buildEncadeamentoAdjacency(questions) {
+    const byId = new Map();
+    for (let qi = 0; qi < questions.length; qi += 1) {
+      byId.set(questions[qi].id, questions[qi]);
+    }
     const ids = new Set(questions.map((q) => q.id));
     const adj = new Map();
     for (const q of questions) {
       adj.set(q.id, []);
     }
     for (const q of questions) {
+      if (!isEncadeavelQuestion(q)) {
+        continue;
+      }
       const target = normalizeEncadeiaRef(q.encadeia_com);
       if (!target || target === q.id || !ids.has(target)) {
+        continue;
+      }
+      const targetQ = byId.get(target);
+      if (!isEncadeavelQuestion(targetQ)) {
         continue;
       }
       adj.get(q.id).push(target);
@@ -140,7 +155,7 @@
       const adj = buildEncadeamentoAdjacency(allQuestions);
       const visited = new Set();
       for (const q of allQuestions) {
-        if (visited.has(q.id)) {
+        if (!isEncadeavelQuestion(q) || visited.has(q.id)) {
           continue;
         }
         const stack = [q.id];
@@ -189,12 +204,16 @@
   }
 
   function filterPoolAfterEncadeamento(allQuestions, rng, encadeamentoCycler) {
+    const byId = new Map();
+    for (let qi = 0; qi < allQuestions.length; qi += 1) {
+      byId.set(allQuestions[qi].id, allQuestions[qi]);
+    }
     const adj = buildEncadeamentoAdjacency(allQuestions);
     const excluded = new Set();
     const visited = new Set();
     const encadeamentoEscolhas = {};
     for (const q of allQuestions) {
-      if (visited.has(q.id)) {
+      if (!isEncadeavelQuestion(q) || visited.has(q.id)) {
         continue;
       }
       const stack = [q.id];
@@ -206,7 +225,7 @@
         const nbs = adj.get(id) || [];
         for (let ni = 0; ni < nbs.length; ni += 1) {
           const nb = nbs[ni];
-          if (!visited.has(nb)) {
+          if (!visited.has(nb) && isEncadeavelQuestion(byId.get(nb))) {
             visited.add(nb);
             stack.push(nb);
           }
