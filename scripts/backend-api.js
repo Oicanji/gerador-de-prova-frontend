@@ -209,36 +209,22 @@
     );
   }
 
-  async function finishUpload(jobId) {
+  async function finishUploadAndStart(jobId) {
     const res = await fetchWithRetry(
       jobApi(`/jobs/${encodeURIComponent(jobId)}/upload/finish`),
       { method: "POST", headers: authHeaders() },
-      "Finalizar upload"
+      "Finalizar upload e enfileirar geracao"
     );
     if (res.ok) {
       return res.json().catch(() => ({}));
     }
     if (res.status === 409 || res.status === 524) {
       const st = await getJobStatus(jobId);
-      if (jobSettled(st.status)) {
-        return { jobId, status: st.status, recovered: true };
-      }
-    }
-    throw new Error(await parseErrorBody(res));
-  }
-
-  async function startJob(jobId) {
-    const res = await fetchWithRetry(
-      jobApi(`/jobs/${encodeURIComponent(jobId)}/start`),
-      { method: "POST", headers: authHeaders() },
-      "Iniciar geracao"
-    );
-    if (res.ok) {
-      return res.json().catch(() => ({}));
-    }
-    if (res.status === 409 || res.status === 524) {
-      const st = await getJobStatus(jobId);
-      if (st.status === "processing" || st.status === "completed" || st.status === "queued") {
+      if (
+        st.status === "processing" ||
+        st.status === "completed" ||
+        st.status === "queued"
+      ) {
         return { jobId, status: st.status, recovered: true };
       }
     }
@@ -274,9 +260,6 @@
     const chunkSize = session.chunkSize || CHUNK_SIZE;
     const totalChunks = session.uploadChunks || Math.ceil(prSize / chunkSize);
     for (let i = 0; i < totalChunks; i += 1) {
-      if (i === 0 || i === totalChunks - 1) {
-        await ensureBackendAwake();
-      }
       const start = i * chunkSize;
       const end = Math.min(prSize, start + chunkSize);
       const slice = prBlob.slice(start, end);
@@ -294,9 +277,7 @@
       }
     }
     await ensureBackendAwake();
-    await finishUpload(jobId);
-    await ensureBackendAwake();
-    await startJob(jobId);
+    await finishUploadAndStart(jobId);
     return { jobId, quantidade: session.quantidade || quantidade };
   }
 
@@ -323,7 +304,17 @@
 
   async function waitForJob(jobId, onProgress) {
     for (;;) {
-      const status = await getJobStatus(jobId);
+      let status;
+      try {
+        status = await getJobStatus(jobId);
+      } catch (err) {
+        const msg = err && err.message ? String(err.message) : "";
+        if (msg.includes("524") || msg.includes("502") || msg.includes("503")) {
+          await sleep(JOB_POLL_MS);
+          continue;
+        }
+        throw err;
+      }
       if (onProgress) {
         try {
           onProgress(status);
