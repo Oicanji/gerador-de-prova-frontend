@@ -6,3 +6,8 @@
   --bs-danger: #fc033d;
   --bs-danger-rgb: 252, 3, 61;
 }
+
+
+.card{
+  border-radius: 0 !important;
+}

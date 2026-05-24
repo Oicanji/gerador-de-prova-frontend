@@ -29,18 +29,17 @@
     </header>
 
     <div id="importPrCard" class="card mb-4">
-      <div class="card-header">Importar pacote PR (.pr)</div>
+      <div class="card-header">Importar um pacote PROVA salvo (.pr)</div>
       <div class="card-body">
-        <p class="small text-pr-muted mb-3 mb-md-2">O ficheiro <code class="text-light">.pr</code> é um ZIP com <code class="text-light">principal.md</code> (texto no formato do gerador: blocos com <code class="text-light">pergunta:</code>, opcionalmente <code class="text-light"># meta</code>), todo arquivo gerado aqui com extensão .pr é feito exclusivamente para o uso dessa ferramenta.</p>
         <div class="row g-3 align-items-end">
           <div class="col-12 col-md-6">
-            <label class="form-label" for="importPrFile">Arquivo .pr</label>
+            <label class="form-label" for="importPrFile">Selecione o arquivo:</label>
             <input type="file" class="form-control form-control-sm" id="importPrFile" accept=".pr,application/zip,application/x-zip-compressed">
           </div>
           <div class="col-12 col-md-6">
             <div class="form-check mt-md-4">
               <input class="form-check-input" type="checkbox" id="importFillMeta" checked>
-              <label class="form-check-label" for="importFillMeta">Atualizar metadados com o bloco <span class="text-pr-muted"># meta</span> (quando existir)</label>
+              <label class="form-check-label" for="importFillMeta">Atualizar Metadados</label>
             </div>
           </div>
         </div>
@@ -63,7 +62,7 @@
       </div>
     </div>
 
-    <ul class="nav nav-tabs mb-3" id="mainTabs" role="tablist">
+    <ul class="nav nav-tabs" id="mainTabs" role="tablist">
       <li class="nav-item" role="presentation">
         <button class="nav-link active" id="tab-gerar" data-bs-toggle="tab" data-bs-target="#pane-gerar" type="button" role="tab" aria-controls="pane-gerar" aria-selected="true">Prova <span id="provaTabBadge" class="badge badge-ifsc ms-1">0</span></button>
       </li>
@@ -72,6 +71,11 @@
       </li>
       <li class="nav-item" role="presentation">
         <button class="nav-link" id="tab-fontes" data-bs-toggle="tab" data-bs-target="#pane-fontes" type="button" role="tab" aria-controls="pane-fontes" aria-selected="false">Fontes <span id="fontesTabBadge" class="badge bg-secondary ms-1">0</span></button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="tab-sobre" data-bs-toggle="tab" data-bs-target="#pane-sobre" type="button" role="tab" aria-controls="pane-sobre" aria-selected="false">
+          <em>Sobre o projeto</em>
+        </button>
       </li>
     </ul>
 
@@ -140,15 +144,71 @@
       </div>
 
       <div class="tab-pane fade" id="pane-corrigir" role="tabpanel" aria-labelledby="tab-corrigir" tabindex="0">
-        <p class="small text-pr-muted mb-2">Use o <strong>somente</strong> pacote <code class="text-light">.pr</code> importado no topo.</p>
-        <p class="small text-pr-muted mb-2">Cada geração grava só o último lote no <code class="text-light">.pr</code>. Execuções antigas ficam em pastas <code class="text-light">output/runs/…</code> (lista em <code class="text-light">output/runs-index.json</code>); na linha de comando use <code class="text-light">--ordens runs/nome-da-pasta</code> no restaurar se não for a última.</p>
-        <p class="small text-pr-muted mb-3">As questões e ids <code class="text-light">Q1</code>, <code class="text-light">Q2</code>, … têm de coincidir com o <code class="text-light">principal.md</code> da geração.</p>
+        <p class="small text-pr-muted mb-2 p-3">Use o <strong>somente</strong> pacote <code class="text-light">.pr</code> importado no topo.</p>
         <button type="button" class="btn btn-primary mb-3" id="btnCorrigirGabarito">Atualizar todos os gabaritos</button>
         <div id="corrigirAlert" class="alert alert-danger d-none" role="alert"></div>
         <div id="corrigirResult" class="d-none"></div>
       </div>
 
-      <div class="tab-pane fade" id="pane-fontes" role="tabpanel" aria-labelledby="tab-fontes" tabindex="0">
+      <div class="tab-pane fade mt-0 pt-0" id="pane-sobre" role="tabpanel" aria-labelledby="tab-sobre" tabindex="0">
+        <div class="card">
+          <div class="card-body p-4">
+            <h2 class="h5 mb-3">Gerador de prova(ineitor) - Versão 1.0.1</h2>
+            <div class="row">
+              <div class="col-7">
+                <p>
+                  Este projeto é uma ferramenta inicialmente desenvolvida para uso interno pelo professor Ignacio Sepúlveda (eu o qual escrevo essa mensagem), feita baseada num formato inicial que fui evoluindo conforme o feedback da turma e professores. Com um código simplês e optimizado para a tarefa de criar milhares de provas diferentes e com soluções a problemas que eu observei, tentei reproduzir esse gerador para facilitar a vida e evoluir o nível e qualidade das provas que eu aplico.
+                  <br /><br />
+                  Como o projeto ficou bem legal, deixo ele livre para o uso de qualquer outro docente. <br /><br />
+                  <strong>Agradecimentos:</strong> <br />
+                  <ul>
+                    <li>Ao IFSC Câmpus Garopaba pelo suporte e oportunidade de lecionar e desenvolver aulas nessa instituição.</li>
+                    <li>Ao professor Ryan Marcos Fragnani por sempre me apoiar e ajudar a evoluir como professor.</li>
+                    <li>Ao professor Alberto Felipe Friderichs Barros pela orientação e feedbacks construtivos.</li>
+                  </ul>
+                </p>
+              </div>
+              <div class="col-5 d-flex justify-content-end">
+                <img src="assets/images/eu.png" alt="Euzinho a uns 3 anos que eu não gosto de tirar fotos" class="img-fluid rounded"
+                  style="height: 500px;"
+                >
+              </div>
+            </div>
+
+            <h3 class="mt-4 border-bottom border-secondary pb-2 h6 mb-2">Como usar</h3>
+            <ol class="small text-pr-muted mb-4 ps-3">
+              <li class="mb-2">Importe um <code class="text-light">.pr</code> no topo da página ou monte a prova na aba <strong>Prova</strong> (metadados, questões, exportar).</li>
+              <li class="mb-2">Tipos suportados: múltipla escolha, discursiva, verdadeiro/falso e relacionar; opcionais, pesos, fotos no enunciado e questões encadeadas.</li>
+              <li class="mb-2">Clique em <strong>Gerar</strong> para enviar ao servidor, compilar o PDF e gravar as ordens sorteadas no pacote (ícone de link verde = servidor online).</li>
+              <li class="mb-2">Na aba <strong>Corrigir</strong>, preencha os gabaritos por <code class="text-light">provaRef</code> após a geração.</li>
+              <li>Na aba <strong>Fontes</strong>, anexe textos de apoio (.txt/.md) para a IA local (chat-gpb), (por enquanto só vai funcionar se você rodar o ollama localmente).</li>
+            </ol>
+
+            <h3 class="mt-4 border-bottom border-secondary pb-2 h6 mb-2">Repositórios relacionados:</h3>
+            <ul class="small text-pr-muted list-unstyled mb-4">
+              <li class="mb-1"><a href="https://github.com/Oicanji/gerador-de-prova-frontend" class="link-light" target="_blank" rel="noopener noreferrer">Código do frontend</a></li>
+              <li class="mb-1"><a href="https://github.com/Oicanji/gerador-de-prova-backend" class="link-light" target="_blank" rel="noopener noreferrer">Código do backend</a></li>
+            </ul>
+
+            <h3 class="mt-4 border-bottom border-secondary pb-2 h6 mb-2">Principais futuros planos:</h3>
+            <ul class="small text-pr-muted list-unstyled mb-4">
+              <li class="mb-1">- Múltiplos gabaritos e formatos de prova (novos modelos e configuração de cabeçario para outras instituições).</li>
+              <li class="mb-1">- Correção automática apartir de foto de gabarito (Sem uso de IA para diminuir o custo).</li>
+              <li class="mb-1">- Hospedar o CHAT-GPB assim disponibilizar os facilitadores de IA para todos.</li>
+            </ul>
+
+            <div class="mt-4 p-3 ">
+              <h3 class="h6 mb-2">Pacote de exemplo</h3>
+              <p class="small text-pr-muted mb-3">
+                Aqui eu deixo um exemplo de uma prova já pronta e aplicada na disciplina de Tópicos Avançados de Internet 2026-1.
+              </p>
+              <a href="exemplo-prova.pr" download="exemplo-prova.pr" class="btn btn-primary">Baixar exemplo-prova.pr</a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-pane fade p-3" id="pane-fontes" role="tabpanel" aria-labelledby="tab-fontes" tabindex="0">
         <h2 class="h6 mb-2">Fontes de apoio</h2>
         <p class="small text-pr-muted mb-3"><span id="fontesListTotal">0</span> arquivo(s). Use <strong>Adicionar fonte:</strong> no topo do editor (apenas .txt e .md, até 20 MB cada).</p>
         <div id="fontesListEmpty" class="small text-pr-muted mb-3">Nenhuma fonte. Use Adicionar fonte: no topo.</div>
@@ -157,7 +217,7 @@
 
       <div class="mt-4 text-center text-secondary text-small">
         <em>
-          By Ignacio Sepúlveda "Oicanji" / Feito para criação de provas para o IFSC - Câmpus Garopaba.
+          1.0.1 - By Ignacio Sepúlveda "Oicanji" / Feito para criação de provas para o <strong></strong>IFSC - Câmpus Garopaba</strong>.
         </em>
       </div>
     </div>

@@ -6,15 +6,16 @@
 - Melhorar metadados e paineis com metadado e questões poderem ser miminizados.
 - Ajsutar centro do icones de carret up e down.
 - Modelos diferentes de prova para gerar. (Manter o modelo ALBERT1 mas voltar com o RIAN1 e adicionar um novo)
-ALBERT1:
+4LBERT:
    Questões divididas e em grupos.
    Cabeçario diminuido.
    Paginação pequena.
    Letra e espaçamentos muito menores.
-RIAN1:
+R1AN:
    Modelo original das provas.
    Questões uma por linha.
    Cabeçario profissional e formal.
+- Opção de esconder pesos das provas antes de gerar.
 
 
 

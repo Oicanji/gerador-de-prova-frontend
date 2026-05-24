@@ -2982,7 +2982,7 @@
       ${combsHtml}
       <button type="button" class="btn btn-sm btn-outline-light" data-action="add-comb" data-q="${i}">Adicionar alternativa de resposta</button>
     </div>
-    <div class="mb-3 encadeio-toolbar d-flex flex-wrap align-items-center gap-2 w-100">
+    <div class="mb-3 encadeio-toolbar d-flex flex-wrap align-items-center gap-2 w-100" title="Ao gerar várias versões, o grupo alterna entre as encadeadas sem repetir até completar o ciclo.">
       <div class="d-flex flex-wrap align-items-center gap-2 flex-grow-1 justify-content-between">
         <label class="small text-pr-muted mb-0 d-flex align-items-center gap-1 text-nowrap">
           <img src="assets/icon/link.svg" width="18" height="18" class="question-header-ico" alt="" aria-hidden="true">
@@ -2996,7 +2996,6 @@
           </select>
         </div>
       </div>
-      <p class="small text-pr-muted mb-0 w-100">Ao gerar várias versões, o grupo alterna entre as encadeadas sem repetir até completar o ciclo.</p>
     </div>
     <div class="d-flex flex-wrap gap-3 ${isTextoImagem ? "d-none" : ""}" data-panel="opcoes-row">
       <div class="form-check mb-0">
